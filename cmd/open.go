@@ -26,8 +26,9 @@ func init() {
 
 // OpenOptions contains the parameters for opening a workspace.
 type OpenOptions struct {
-	DestDir       string // Worktree directory (default ~/at)
-	WorkspaceName string // Name of the workspace to open
+	DestDir       string            // Worktree directory (default ~/at)
+	WorkspaceName string            // Name of the workspace to open
+	EnvVars       map[string]string // Session-level environment variables (optional)
 }
 
 // OpenWorkspace opens a tmux session in the specified workspace.
@@ -55,6 +56,9 @@ func OpenWorkspace(opts OpenOptions) error {
 
 	// Check if session already exists
 	if tmux.SessionExists(opts.WorkspaceName) {
+		if err := setSessionEnvVars(opts.WorkspaceName, opts.EnvVars); err != nil {
+			return err
+		}
 		if tmux.InSession() {
 			return tmux.SwitchTo(opts.WorkspaceName)
 		}
@@ -66,11 +70,35 @@ func OpenWorkspace(opts OpenOptions) error {
 		if err := tmux.NewSessionDetached(opts.WorkspaceName, workspacePath); err != nil {
 			return err
 		}
+		if err := setSessionEnvVars(opts.WorkspaceName, opts.EnvVars); err != nil {
+			return err
+		}
 		return tmux.SwitchTo(opts.WorkspaceName)
+	}
+
+	// If env vars are needed, create detached first to set them before attaching
+	if len(opts.EnvVars) > 0 {
+		if err := tmux.NewSessionDetached(opts.WorkspaceName, workspacePath); err != nil {
+			return err
+		}
+		if err := setSessionEnvVars(opts.WorkspaceName, opts.EnvVars); err != nil {
+			return err
+		}
+		return tmux.Attach(opts.WorkspaceName)
 	}
 
 	// Create new session and attach
 	return tmux.NewSession(opts.WorkspaceName, workspacePath)
+}
+
+// setSessionEnvVars sets environment variables on a tmux session.
+func setSessionEnvVars(session string, envVars map[string]string) error {
+	for key, value := range envVars {
+		if err := tmux.SetEnvironment(session, key, value); err != nil {
+			return fmt.Errorf("failed to set env var %s: %w", key, err)
+		}
+	}
+	return nil
 }
 
 func runOpen(cmd *cobra.Command, args []string) error {
