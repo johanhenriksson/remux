@@ -93,7 +93,9 @@ func runBranch(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Print worktree path (pipeable)
-	fmt.Println(worktreePath)
-	return nil
+	// Open tmux session in the new workspace
+	return OpenWorkspace(OpenOptions{
+		DestDir:       dest,
+		WorkspaceName: filepath.Base(worktreePath),
+	})
 }

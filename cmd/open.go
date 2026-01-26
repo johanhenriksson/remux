@@ -55,21 +55,18 @@ func OpenWorkspace(opts OpenOptions) error {
 
 	// Check if session already exists
 	if tmux.SessionExists(opts.WorkspaceName) {
-		// If already in tmux, just print the session name
 		if tmux.InSession() {
-			fmt.Println(tmux.SessionName(opts.WorkspaceName))
-			return nil
+			return tmux.SwitchTo(opts.WorkspaceName)
 		}
 		return tmux.Attach(opts.WorkspaceName)
 	}
 
-	// If already in tmux, create detached session
+	// If already in tmux, create detached session and switch to it
 	if tmux.InSession() {
 		if err := tmux.NewSessionDetached(opts.WorkspaceName, workspacePath); err != nil {
 			return err
 		}
-		fmt.Println(tmux.SessionName(opts.WorkspaceName))
-		return nil
+		return tmux.SwitchTo(opts.WorkspaceName)
 	}
 
 	// Create new session and attach
