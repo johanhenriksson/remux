@@ -8,119 +8,76 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/johanhenriksson/automo/cmd"
+	"github.com/johanhenriksson/automo/spaces"
 )
 
 var _ = Describe("Drop", func() {
 	var (
-		mainRepoDir  string
-		worktreeDir  string
-		destDir      string
+		mainRepoDir string
+		worktreeDir string
+		destDir     string
 	)
 
 	BeforeEach(func() {
 		var err error
 
-		// Create temp directory for main git repo
 		mainRepoDir, err = os.MkdirTemp("", "test-main-repo-*")
 		Expect(err).NotTo(HaveOccurred())
 
-		// Create temp directory for worktrees
 		destDir, err = os.MkdirTemp("", "test-dest-*")
 		Expect(err).NotTo(HaveOccurred())
 
-		// Initialize main git repo
 		runGitCmd(mainRepoDir, "init")
 		runGitCmd(mainRepoDir, "config", "user.email", "test@test.com")
 		runGitCmd(mainRepoDir, "config", "user.name", "Test User")
 
-		// Create initial commit
 		testFile := filepath.Join(mainRepoDir, "README.md")
 		err = os.WriteFile(testFile, []byte("# Test"), 0644)
 		Expect(err).NotTo(HaveOccurred())
 		runGitCmd(mainRepoDir, "add", ".")
 		runGitCmd(mainRepoDir, "commit", "-m", "Initial commit")
 
-		// Create a branch and worktree
 		worktreeDir = filepath.Join(destDir, "test-worktree")
 		runGitCmd(mainRepoDir, "branch", "test-branch")
 		runGitCmd(mainRepoDir, "worktree", "add", worktreeDir, "test-branch")
 	})
 
 	AfterEach(func() {
-		// Clean up temp directories
 		os.RemoveAll(mainRepoDir)
 		os.RemoveAll(destDir)
 	})
 
-	Describe("IsWorktree", func() {
-		It("returns true for a worktree directory", func() {
-			Expect(cmd.IsWorktree(worktreeDir)).To(BeTrue())
-		})
-
-		It("returns false for the main repo", func() {
-			Expect(cmd.IsWorktree(mainRepoDir)).To(BeFalse())
-		})
-
-		It("returns false for a non-git directory", func() {
-			nonGitDir, err := os.MkdirTemp("", "non-git-*")
-			Expect(err).NotTo(HaveOccurred())
-			defer os.RemoveAll(nonGitDir)
-
-			Expect(cmd.IsWorktree(nonGitDir)).To(BeFalse())
-		})
-	})
-
-	Describe("HasUncommittedChanges", func() {
-		It("returns false for a clean worktree", func() {
-			Expect(cmd.HasUncommittedChanges(worktreeDir)).To(BeFalse())
-		})
-
-		It("returns true when there are uncommitted changes", func() {
-			// Create an uncommitted file
-			testFile := filepath.Join(worktreeDir, "uncommitted.txt")
-			err := os.WriteFile(testFile, []byte("uncommitted"), 0644)
-			Expect(err).NotTo(HaveOccurred())
-
-			Expect(cmd.HasUncommittedChanges(worktreeDir)).To(BeTrue())
-		})
-	})
-
-	Describe("DropWorktree", func() {
+	Describe("spaces.Drop", func() {
 		It("removes a worktree successfully", func() {
-			err := cmd.DropWorktree(worktreeDir)
+			err := spaces.Drop(worktreeDir)
 
 			Expect(err).NotTo(HaveOccurred())
 
-			// Verify worktree directory was removed
 			_, err = os.Stat(worktreeDir)
 			Expect(os.IsNotExist(err)).To(BeTrue())
 
-			// Verify branch still exists
 			gitCmd := exec.Command("git", "-C", mainRepoDir, "show-ref", "--verify", "refs/heads/test-branch")
 			err = gitCmd.Run()
 			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("returns an error when not in a worktree", func() {
-			err := cmd.DropWorktree(mainRepoDir)
+			err := spaces.Drop(mainRepoDir)
 
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("not in a git worktree"))
 		})
 
 		It("returns an error when there are uncommitted changes", func() {
-			// Create an uncommitted file
 			testFile := filepath.Join(worktreeDir, "uncommitted.txt")
 			err := os.WriteFile(testFile, []byte("uncommitted"), 0644)
 			Expect(err).NotTo(HaveOccurred())
 
-			err = cmd.DropWorktree(worktreeDir)
+			err = spaces.Drop(worktreeDir)
 
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("uncommitted changes"))
 
-			// Verify worktree still exists
 			_, err = os.Stat(worktreeDir)
 			Expect(err).NotTo(HaveOccurred())
 		})
@@ -130,10 +87,19 @@ var _ = Describe("Drop", func() {
 			Expect(err).NotTo(HaveOccurred())
 			defer os.RemoveAll(nonGitDir)
 
-			err = cmd.DropWorktree(nonGitDir)
+			err = spaces.Drop(nonGitDir)
 
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("not in a git worktree"))
 		})
 	})
 })
+
+func runGitCmd(repoDir string, args ...string) {
+	allArgs := append([]string{"-C", repoDir}, args...)
+	gitCmd := exec.Command("git", allArgs...)
+	gitCmd.Stdout = GinkgoWriter
+	gitCmd.Stderr = GinkgoWriter
+	err := gitCmd.Run()
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
+}
