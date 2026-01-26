@@ -3,10 +3,9 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 
+	"github.com/johanhenriksson/automo/git"
 	"github.com/spf13/cobra"
 )
 
@@ -38,7 +37,7 @@ func CreateBranch(opts BranchOptions) (string, error) {
 	repoName := filepath.Base(opts.RepoRoot)
 
 	// Check if branch already exists
-	if branchExists(opts.RepoRoot, opts.BranchName) {
+	if git.BranchExists(opts.RepoRoot, opts.BranchName) {
 		return "", fmt.Errorf("branch %q already exists", opts.BranchName)
 	}
 
@@ -51,14 +50,14 @@ func CreateBranch(opts BranchOptions) (string, error) {
 	}
 
 	// Create branch from current HEAD
-	if err := runGit(opts.RepoRoot, "branch", opts.BranchName); err != nil {
+	if err := git.Run(opts.RepoRoot, "branch", opts.BranchName); err != nil {
 		return "", fmt.Errorf("failed to create branch: %w", err)
 	}
 
 	// Create worktree
-	if err := runGit(opts.RepoRoot, "worktree", "add", worktreePath, opts.BranchName); err != nil {
+	if err := git.Run(opts.RepoRoot, "worktree", "add", worktreePath, opts.BranchName); err != nil {
 		// Clean up branch if worktree creation fails
-		_ = runGit(opts.RepoRoot, "branch", "-d", opts.BranchName)
+		_ = git.Run(opts.RepoRoot, "branch", "-d", opts.BranchName)
 		return "", fmt.Errorf("failed to create worktree: %w", err)
 	}
 
@@ -69,7 +68,7 @@ func runBranch(cmd *cobra.Command, args []string) error {
 	branchName := args[0]
 
 	// Find git repo root
-	repoRoot, err := findGitRoot()
+	repoRoot, err := git.FindRoot()
 	if err != nil {
 		return fmt.Errorf("not in a git repository: %w", err)
 	}
@@ -97,25 +96,4 @@ func runBranch(cmd *cobra.Command, args []string) error {
 	// Print worktree path (pipeable)
 	fmt.Println(worktreePath)
 	return nil
-}
-
-func findGitRoot() (string, error) {
-	out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(out)), nil
-}
-
-func branchExists(repoRoot, name string) bool {
-	cmd := exec.Command("git", "-C", repoRoot, "show-ref", "--verify", "--quiet", "refs/heads/"+name)
-	return cmd.Run() == nil
-}
-
-func runGit(repoRoot string, args ...string) error {
-	allArgs := append([]string{"-C", repoRoot}, args...)
-	cmd := exec.Command("git", allArgs...)
-	cmd.Stdout = os.Stderr
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
 }

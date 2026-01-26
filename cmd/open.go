@@ -3,10 +3,10 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 
+	"github.com/johanhenriksson/automo/git"
+	"github.com/johanhenriksson/automo/tmux"
 	"github.com/spf13/cobra"
 )
 
@@ -49,52 +49,31 @@ func OpenWorkspace(opts OpenOptions) error {
 	}
 
 	// Verify it's a valid worktree
-	if !IsWorktree(workspacePath) {
+	if !git.IsWorktree(workspacePath) {
 		return fmt.Errorf("not a git worktree: %s", workspacePath)
 	}
 
-	// Sanitize session name for tmux
-	sessionName := SanitizeSessionName(opts.WorkspaceName)
-
 	// Check if session already exists
-	if tmuxSessionExists(sessionName) {
-		return tmuxAttach(sessionName)
+	if tmux.SessionExists(opts.WorkspaceName) {
+		// If already in tmux, just print the session name
+		if tmux.InSession() {
+			fmt.Println(tmux.SessionName(opts.WorkspaceName))
+			return nil
+		}
+		return tmux.Attach(opts.WorkspaceName)
+	}
+
+	// If already in tmux, create detached session
+	if tmux.InSession() {
+		if err := tmux.NewSessionDetached(opts.WorkspaceName, workspacePath); err != nil {
+			return err
+		}
+		fmt.Println(tmux.SessionName(opts.WorkspaceName))
+		return nil
 	}
 
 	// Create new session and attach
-	return tmuxNewSession(sessionName, workspacePath)
-}
-
-// SanitizeSessionName replaces characters that tmux doesn't allow in session names.
-// Tmux disallows dots and colons in session names.
-func SanitizeSessionName(name string) string {
-	name = strings.ReplaceAll(name, ".", "_")
-	name = strings.ReplaceAll(name, ":", "_")
-	return name
-}
-
-// tmuxSessionExists checks if a tmux session with the given name exists.
-func tmuxSessionExists(name string) bool {
-	cmd := exec.Command("tmux", "has-session", "-t", name)
-	return cmd.Run() == nil
-}
-
-// tmuxAttach attaches to an existing tmux session.
-func tmuxAttach(name string) error {
-	cmd := exec.Command("tmux", "attach-session", "-t", name)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
-// tmuxNewSession creates a new tmux session and attaches to it.
-func tmuxNewSession(name, workdir string) error {
-	cmd := exec.Command("tmux", "new-session", "-s", name, "-c", workdir)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return tmux.NewSession(opts.WorkspaceName, workspacePath)
 }
 
 func runOpen(cmd *cobra.Command, args []string) error {
@@ -111,7 +90,7 @@ func runOpen(cmd *cobra.Command, args []string) error {
 	}
 
 	// If in a git repo, prefix the repo name
-	if repoRoot, err := findGitRoot(); err == nil {
+	if repoRoot, err := git.FindRoot(); err == nil {
 		repoName := filepath.Base(repoRoot)
 		workspaceName = fmt.Sprintf("%s-%s", repoName, workspaceName)
 	}

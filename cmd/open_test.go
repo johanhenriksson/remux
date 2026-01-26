@@ -47,27 +47,8 @@ var _ = Describe("Open", func() {
 	})
 
 	AfterEach(func() {
-		// Clean up temp directories
 		os.RemoveAll(mainRepoDir)
 		os.RemoveAll(destDir)
-	})
-
-	Describe("SanitizeSessionName", func() {
-		It("replaces dots with underscores", func() {
-			Expect(cmd.SanitizeSessionName("my.workspace")).To(Equal("my_workspace"))
-		})
-
-		It("replaces colons with underscores", func() {
-			Expect(cmd.SanitizeSessionName("my:workspace")).To(Equal("my_workspace"))
-		})
-
-		It("replaces multiple special characters", func() {
-			Expect(cmd.SanitizeSessionName("repo.name:branch")).To(Equal("repo_name_branch"))
-		})
-
-		It("leaves valid names unchanged", func() {
-			Expect(cmd.SanitizeSessionName("my-workspace")).To(Equal("my-workspace"))
-		})
 	})
 
 	Describe("OpenWorkspace", func() {
@@ -84,7 +65,6 @@ var _ = Describe("Open", func() {
 		})
 
 		It("returns an error for non-worktree directory", func() {
-			// Create a regular directory (not a worktree)
 			regularDir := filepath.Join(destDir, "regular-dir")
 			err := os.MkdirAll(regularDir, 0755)
 			Expect(err).NotTo(HaveOccurred())
@@ -101,7 +81,6 @@ var _ = Describe("Open", func() {
 		})
 
 		It("returns an error when path is a file, not a directory", func() {
-			// Create a file instead of directory
 			filePath := filepath.Join(destDir, "file-not-dir")
 			err := os.WriteFile(filePath, []byte("test"), 0644)
 			Expect(err).NotTo(HaveOccurred())
@@ -116,9 +95,5 @@ var _ = Describe("Open", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("not a directory"))
 		})
-
-		// Note: We cannot easily test the actual tmux session creation in unit tests
-		// as it requires a running tmux server and would create actual sessions.
-		// The path validation tests above cover the validation logic.
 	})
 })
