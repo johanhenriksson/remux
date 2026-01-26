@@ -22,13 +22,33 @@ func BranchExists(repoRoot, name string) bool {
 	return cmd.Run() == nil
 }
 
-// Run runs a git command in the specified repository.
-func Run(repoRoot string, args ...string) error {
+// run runs a git command in the specified repository.
+func run(repoRoot string, args ...string) error {
 	allArgs := append([]string{"-C", repoRoot}, args...)
 	cmd := exec.Command("git", allArgs...)
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// CreateBranch creates a new branch at the current HEAD.
+func CreateBranch(repoRoot, name string) error {
+	return run(repoRoot, "branch", name)
+}
+
+// DeleteBranch deletes a branch.
+func DeleteBranch(repoRoot, name string) error {
+	return run(repoRoot, "branch", "-d", name)
+}
+
+// AddWorktree creates a new worktree for the given branch.
+func AddWorktree(repoRoot, path, branch string) error {
+	return run(repoRoot, "worktree", "add", path, branch)
+}
+
+// RemoveWorktree removes a worktree.
+func RemoveWorktree(repoRoot, worktreePath string) error {
+	return run(repoRoot, "worktree", "remove", worktreePath)
 }
 
 // IsWorktree checks if the given path is a git worktree (not the main repo).
