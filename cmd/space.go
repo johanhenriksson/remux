@@ -49,14 +49,30 @@ func init() {
 }
 
 func getDestDir() (string, error) {
-	if spaceDestDir != "" {
-		return spaceDestDir, nil
+	return resolveDestDir(spaceDestDir)
+}
+
+// resolveDestDir resolves the destination directory, expanding ~ and making it absolute.
+func resolveDestDir(dest string) (string, error) {
+	if dest == "" {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("failed to get home directory: %w", err)
+		}
+		return filepath.Join(homeDir, "at"), nil
 	}
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("failed to get home directory: %w", err)
+
+	// Expand ~ to home directory
+	if len(dest) > 1 && dest[:2] == "~/" {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("failed to get home directory: %w", err)
+		}
+		dest = filepath.Join(homeDir, dest[2:])
 	}
-	return filepath.Join(homeDir, "at"), nil
+
+	// Make absolute
+	return filepath.Abs(dest)
 }
 
 func runSpaceNew(cmd *cobra.Command, args []string) error {
