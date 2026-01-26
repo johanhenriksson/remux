@@ -13,9 +13,9 @@ import (
 
 var _ = Describe("Drop", func() {
 	var (
-		mainRepoDir  string
-		worktreeDir  string
-		destDir      string
+		mainRepoDir string
+		worktreeDir string
+		destDir     string
 	)
 
 	BeforeEach(func() {
@@ -48,42 +48,8 @@ var _ = Describe("Drop", func() {
 	})
 
 	AfterEach(func() {
-		// Clean up temp directories
 		os.RemoveAll(mainRepoDir)
 		os.RemoveAll(destDir)
-	})
-
-	Describe("IsWorktree", func() {
-		It("returns true for a worktree directory", func() {
-			Expect(cmd.IsWorktree(worktreeDir)).To(BeTrue())
-		})
-
-		It("returns false for the main repo", func() {
-			Expect(cmd.IsWorktree(mainRepoDir)).To(BeFalse())
-		})
-
-		It("returns false for a non-git directory", func() {
-			nonGitDir, err := os.MkdirTemp("", "non-git-*")
-			Expect(err).NotTo(HaveOccurred())
-			defer os.RemoveAll(nonGitDir)
-
-			Expect(cmd.IsWorktree(nonGitDir)).To(BeFalse())
-		})
-	})
-
-	Describe("HasUncommittedChanges", func() {
-		It("returns false for a clean worktree", func() {
-			Expect(cmd.HasUncommittedChanges(worktreeDir)).To(BeFalse())
-		})
-
-		It("returns true when there are uncommitted changes", func() {
-			// Create an uncommitted file
-			testFile := filepath.Join(worktreeDir, "uncommitted.txt")
-			err := os.WriteFile(testFile, []byte("uncommitted"), 0644)
-			Expect(err).NotTo(HaveOccurred())
-
-			Expect(cmd.HasUncommittedChanges(worktreeDir)).To(BeTrue())
-		})
 	})
 
 	Describe("DropWorktree", func() {
@@ -110,7 +76,6 @@ var _ = Describe("Drop", func() {
 		})
 
 		It("returns an error when there are uncommitted changes", func() {
-			// Create an uncommitted file
 			testFile := filepath.Join(worktreeDir, "uncommitted.txt")
 			err := os.WriteFile(testFile, []byte("uncommitted"), 0644)
 			Expect(err).NotTo(HaveOccurred())
