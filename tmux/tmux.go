@@ -68,3 +68,8 @@ func InSession() bool {
 func SessionName(name string) string {
 	return sanitizeName(name)
 }
+
+// SetEnvironment sets a session-level environment variable.
+func SetEnvironment(session, key, value string) error {
+	return run("set-environment", "-t", sanitizeName(session), key, value)
+}
