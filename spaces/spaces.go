@@ -1,105 +1,79 @@
 package spaces
 
 import (
-	"os"
+	"fmt"
 	"path/filepath"
+	"strings"
 
-	"gopkg.in/yaml.v3"
+	"github.com/johanhenriksson/automo/config"
+	"github.com/johanhenriksson/automo/registry"
 )
 
-const registryFile = "spaces.yaml"
-
-// Port allocation constants.
-const (
-	BasePort  = 11010
-	PortRange = 10
-)
-
-// Space represents a tracked workspace.
+// Space represents a loaded workspace with config.
 type Space struct {
-	Name string `yaml:"name"`
-	Path string `yaml:"path"`
-	Port int    `yaml:"port"`
+	Name   string
+	Path   string
+	Port   int
+	config *config.Config
 }
 
-// Registry holds a list of tracked spaces.
-type Registry struct {
-	Spaces []Space `yaml:"spaces"`
+// ID returns a sanitized identifier for the space (hyphens replaced with underscores).
+func (s *Space) ID() string {
+	return strings.ReplaceAll(s.Name, "-", "_")
 }
 
-// Load reads the space registry from the given directory.
-// Returns an empty registry if the file doesn't exist.
-func Load(dir string) (*Registry, error) {
-	path := filepath.Join(dir, registryFile)
-	data, err := os.ReadFile(path)
+// Open loads a space from the given worktree path.
+// It loads both the registry entry and workspace config.
+func Open(worktreePath string) (*Space, error) {
+	destDir := filepath.Dir(worktreePath)
+	spaceName := filepath.Base(worktreePath)
+
+	reg, err := registry.Load(destDir)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return &Registry{}, nil
-		}
-		return nil, err
+		return nil, fmt.Errorf("failed to load registry: %w", err)
 	}
 
-	var reg Registry
-	if err := yaml.Unmarshal(data, &reg); err != nil {
-		return nil, err
+	entry := reg.Get(spaceName)
+	if entry == nil {
+		return nil, fmt.Errorf("space not found: %s", spaceName)
 	}
-	return &reg, nil
-}
 
-// Save writes the registry to the given directory.
-func (r *Registry) Save(dir string) error {
-	path := filepath.Join(dir, registryFile)
-	data, err := yaml.Marshal(r)
+	cfg, err := config.Load(worktreePath)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
-	return os.WriteFile(path, data, 0644)
+
+	space := &Space{
+		Name:   entry.Name,
+		Path:   entry.Path,
+		Port:   entry.Port,
+		config: cfg,
+	}
+
+	return space, nil
 }
 
-// Add adds a space to the registry. Idempotent - updates path if name exists.
-func (r *Registry) Add(name, path string, port int) {
-	for i, s := range r.Spaces {
-		if s.Name == name {
-			r.Spaces[i].Path = path
-			r.Spaces[i].Port = port
-			return
-		}
-	}
-	r.Spaces = append(r.Spaces, Space{Name: name, Path: path, Port: port})
+// configSpace returns the config.Space context for template evaluation.
+func (s *Space) configSpace() config.Space {
+	return config.NewSpace(s.Name, s.Path, s.Port)
 }
 
-// Get returns a pointer to the space with the given name, or nil if not found.
-func (r *Registry) Get(name string) *Space {
-	for i, s := range r.Spaces {
-		if s.Name == name {
-			return &r.Spaces[i]
-		}
-	}
-	return nil
+// RunOnCreate executes on_create hooks. Prints warnings on failure.
+func (s *Space) RunOnCreate() {
+	s.config.RunOnCreate(s.configSpace())
 }
 
-// AllocatePort finds the next available port range.
-func (r *Registry) AllocatePort() int {
-	maxPort := BasePort - PortRange
-	for _, s := range r.Spaces {
-		if s.Port > maxPort {
-			maxPort = s.Port
-		}
-	}
-	return maxPort + PortRange
+// RunOnOpen executes on_open hooks. Returns error on failure.
+func (s *Space) RunOnOpen() error {
+	return s.config.RunOnOpen(s.configSpace())
 }
 
-// Remove removes a space by name.
-func (r *Registry) Remove(name string) {
-	for i, s := range r.Spaces {
-		if s.Name == name {
-			r.Spaces = append(r.Spaces[:i], r.Spaces[i+1:]...)
-			return
-		}
-	}
+// RunOnDrop executes on_drop hooks. Returns error on failure.
+func (s *Space) RunOnDrop() error {
+	return s.config.RunOnDrop(s.configSpace())
 }
 
-// List returns all tracked spaces.
-func (r *Registry) List() []Space {
-	return r.Spaces
+// ResolveEnv evaluates template expressions in config env vars.
+func (s *Space) ResolveEnv() (map[string]string, error) {
+	return s.config.ResolveEnv(s.configSpace())
 }

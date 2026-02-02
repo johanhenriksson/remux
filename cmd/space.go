@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/johanhenriksson/automo/git"
+	"github.com/johanhenriksson/automo/registry"
 	"github.com/johanhenriksson/automo/spaces"
 	"github.com/spf13/cobra"
 )
@@ -97,7 +98,7 @@ func runSpaceNew(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	return spaces.Open(spaces.OpenOptions{
+	return spaces.OpenSession(spaces.OpenSessionOptions{
 		DestDir: dest,
 		Name:    filepath.Base(worktreePath),
 	})
@@ -117,7 +118,7 @@ func runSpaceOpen(cmd *cobra.Command, args []string) error {
 		spaceName = fmt.Sprintf("%s-%s", repoName, spaceName)
 	}
 
-	return spaces.Open(spaces.OpenOptions{
+	return spaces.OpenSession(spaces.OpenSessionOptions{
 		DestDir: dest,
 		Name:    spaceName,
 	})
@@ -129,19 +130,19 @@ func runSpaceList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	reg, err := spaces.Load(dest)
+	reg, err := registry.Load(dest)
 	if err != nil {
 		return fmt.Errorf("failed to load space registry: %w", err)
 	}
 
-	spacesList := reg.List()
-	if len(spacesList) == 0 {
+	entries := reg.List()
+	if len(entries) == 0 {
 		fmt.Println("No tracked spaces")
 		return nil
 	}
 
-	for _, s := range spacesList {
-		fmt.Printf("%s\t%s\n", s.Name, s.Path)
+	for _, e := range entries {
+		fmt.Printf("%s\t%s\n", e.Name, e.Path)
 	}
 	return nil
 }

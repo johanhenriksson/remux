@@ -3,6 +3,7 @@ module github.com/johanhenriksson/automo
 go 1.25.1
 
 require (
+	github.com/expr-lang/expr v1.17.7
 	github.com/onsi/ginkgo/v2 v2.27.5
 	github.com/onsi/gomega v1.39.0
 	github.com/spf13/cobra v1.10.2

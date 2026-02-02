@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/johanhenriksson/automo/git"
+	"github.com/johanhenriksson/automo/registry"
 	"github.com/johanhenriksson/automo/tmux"
 )
 
@@ -25,6 +26,15 @@ func Drop(worktreePath string) error {
 		return fmt.Errorf("failed to find main repository: %w", err)
 	}
 
+	// Run on_drop hooks before removal (abort on failure)
+	// If space isn't registered, skip hooks but continue with removal
+	spaceName := filepath.Base(worktreePath)
+	if space, err := Open(worktreePath); err == nil {
+		if err := space.RunOnDrop(); err != nil {
+			return err
+		}
+	}
+
 	if err := git.RemoveWorktree(mainRepo, worktreePath); err != nil {
 		return fmt.Errorf("failed to remove worktree: %w", err)
 	}
@@ -33,11 +43,9 @@ func Drop(worktreePath string) error {
 		return fmt.Errorf("failed to remove directory: %w", err)
 	}
 
-	spaceName := filepath.Base(worktreePath)
-	destDir := filepath.Dir(worktreePath)
-
 	// Unregister the space
-	reg, err := Load(destDir)
+	destDir := filepath.Dir(worktreePath)
+	reg, err := registry.Load(destDir)
 	if err == nil {
 		reg.Remove(spaceName)
 		_ = reg.Save(destDir)

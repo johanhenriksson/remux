@@ -10,16 +10,16 @@ import (
 	"github.com/johanhenriksson/automo/tmux"
 )
 
-// OpenOptions contains the parameters for opening a space.
-type OpenOptions struct {
-	DestDir   string            // Worktree directory
-	Name      string            // Name of the space to open
-	EnvVars   map[string]string // Session-level environment variables (optional)
+// OpenSessionOptions contains the parameters for opening a space session.
+type OpenSessionOptions struct {
+	DestDir string            // Worktree directory
+	Name    string            // Name of the space to open
+	EnvVars map[string]string // Session-level environment variables (optional)
 }
 
-// Open opens a tmux session in the specified space.
+// OpenSession opens a tmux session in the specified space.
 // If a session with that name already exists, it attaches to it.
-func Open(opts OpenOptions) error {
+func OpenSession(opts OpenSessionOptions) error {
 	spacePath := filepath.Join(opts.DestDir, opts.Name)
 
 	info, err := os.Stat(spacePath)
@@ -37,15 +37,31 @@ func Open(opts OpenOptions) error {
 		return fmt.Errorf("not a git worktree: %s", spacePath)
 	}
 
-	// Look up space port and add to env vars
-	reg, err := Load(opts.DestDir)
-	if err == nil {
-		if space := reg.Get(opts.Name); space != nil && space.Port > 0 {
-			if opts.EnvVars == nil {
-				opts.EnvVars = make(map[string]string)
-			}
-			opts.EnvVars["SPACE_PORT"] = strconv.Itoa(space.Port)
-		}
+	// Load space with config
+	space, err := Open(spacePath)
+	if err != nil {
+		return err
+	}
+
+	if opts.EnvVars == nil {
+		opts.EnvVars = make(map[string]string)
+	}
+
+	// todo: maybe no longer required?
+	opts.EnvVars["SPACE_PORT"] = strconv.Itoa(space.Port)
+
+	// Merge config env vars
+	resolved, err := space.ResolveEnv()
+	if err != nil {
+		return fmt.Errorf("failed to resolve config env vars: %w", err)
+	}
+	for key, value := range resolved {
+		opts.EnvVars[key] = value
+	}
+
+	// Run on_open hooks
+	if err := space.RunOnOpen(); err != nil {
+		return err
 	}
 
 	if tmux.SessionExists(opts.Name) {
