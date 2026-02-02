@@ -65,9 +65,6 @@ func OpenSession(opts OpenSessionOptions) error {
 	}
 
 	if tmux.SessionExists(opts.Name) {
-		if err := setSessionEnvVars(opts.Name, opts.EnvVars); err != nil {
-			return err
-		}
 		if tmux.InSession() {
 			return tmux.SwitchTo(opts.Name)
 		}
@@ -75,33 +72,11 @@ func OpenSession(opts OpenSessionOptions) error {
 	}
 
 	if tmux.InSession() {
-		if err := tmux.NewSessionDetached(opts.Name, spacePath); err != nil {
-			return err
-		}
-		if err := setSessionEnvVars(opts.Name, opts.EnvVars); err != nil {
+		if err := tmux.NewSessionDetached(opts.Name, spacePath, opts.EnvVars); err != nil {
 			return err
 		}
 		return tmux.SwitchTo(opts.Name)
 	}
 
-	if len(opts.EnvVars) > 0 {
-		if err := tmux.NewSessionDetached(opts.Name, spacePath); err != nil {
-			return err
-		}
-		if err := setSessionEnvVars(opts.Name, opts.EnvVars); err != nil {
-			return err
-		}
-		return tmux.Attach(opts.Name)
-	}
-
-	return tmux.NewSession(opts.Name, spacePath)
-}
-
-func setSessionEnvVars(session string, envVars map[string]string) error {
-	for key, value := range envVars {
-		if err := tmux.SetEnvironment(session, key, value); err != nil {
-			return fmt.Errorf("failed to set env var %s: %w", key, err)
-		}
-	}
-	return nil
+	return tmux.NewSession(opts.Name, spacePath, opts.EnvVars)
 }
