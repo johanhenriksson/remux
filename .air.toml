@@ -1,0 +1,17 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+bin = "./bin/aut"
+cmd = "go build -o ./bin/aut ."
+delay = 1000
+exclude_dir = ["bin", "tmp", "vendor"]
+exclude_regex = ["_test.go"]
+include_ext = ["go", "yaml"]
+kill_delay = "2s"
+
+[log]
+time = false
+
+[misc]
+clean_on_exit = true
