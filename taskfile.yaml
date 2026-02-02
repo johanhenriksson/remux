@@ -1,0 +1,12 @@
+version: "3"
+
+tasks:
+  tools:
+    desc: Install development tools
+    cmds:
+      - go get -tool github.com/air-verse/air@latest
+
+  watch:
+    desc: Watch for changes and rebuild
+    cmds:
+      - go tool air -c .air.toml
