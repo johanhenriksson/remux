@@ -42,7 +42,7 @@ func Create(opts CreateOptions) (string, error) {
 	// Register the new space
 	reg, err := Load(opts.DestDir)
 	if err == nil {
-		reg.Add(filepath.Base(worktreePath), worktreePath)
+		reg.Add(filepath.Base(worktreePath), worktreePath, reg.AllocatePort())
 		_ = reg.Save(opts.DestDir)
 	}
 
