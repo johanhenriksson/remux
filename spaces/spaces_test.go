@@ -12,6 +12,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/johanhenriksson/automo/registry"
 	"github.com/johanhenriksson/automo/spaces"
 	"github.com/johanhenriksson/automo/tmux"
 )
@@ -20,91 +21,6 @@ func TestSpaces(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Spaces Suite")
 }
-
-var _ = Describe("Registry", func() {
-	var (
-		reg     *spaces.Registry
-		tempDir string
-	)
-
-	BeforeEach(func() {
-		var err error
-		tempDir, err = os.MkdirTemp("", "test-registry-*")
-		Expect(err).NotTo(HaveOccurred())
-		reg = &spaces.Registry{}
-	})
-
-	AfterEach(func() {
-		os.RemoveAll(tempDir)
-	})
-
-	Describe("AllocatePort", func() {
-		It("returns BasePort for empty registry", func() {
-			Expect(reg.AllocatePort()).To(Equal(spaces.BasePort))
-		})
-
-		It("returns next port after single space", func() {
-			reg.Add("space1", "/path/1", spaces.BasePort)
-			Expect(reg.AllocatePort()).To(Equal(spaces.BasePort + spaces.PortRange))
-		})
-
-		It("returns max port + PortRange for multiple spaces", func() {
-			reg.Add("space1", "/path/1", 11010)
-			reg.Add("space2", "/path/2", 11020)
-			reg.Add("space3", "/path/3", 11030)
-			Expect(reg.AllocatePort()).To(Equal(11040))
-		})
-
-		It("handles non-sequential ports", func() {
-			reg.Add("space1", "/path/1", 11010)
-			reg.Add("space2", "/path/2", 11050) // gap
-			Expect(reg.AllocatePort()).To(Equal(11060))
-		})
-	})
-
-	Describe("Get", func() {
-		It("returns nil for non-existent space", func() {
-			Expect(reg.Get("missing")).To(BeNil())
-		})
-
-		It("returns pointer to existing space", func() {
-			reg.Add("test", "/path/test", 11010)
-			space := reg.Get("test")
-			Expect(space).NotTo(BeNil())
-			Expect(space.Name).To(Equal("test"))
-			Expect(space.Port).To(Equal(11010))
-		})
-	})
-
-	Describe("Add", func() {
-		It("adds new space with port", func() {
-			reg.Add("new", "/path/new", 11010)
-			Expect(reg.List()).To(HaveLen(1))
-			Expect(reg.List()[0].Port).To(Equal(11010))
-		})
-
-		It("updates existing space", func() {
-			reg.Add("test", "/old/path", 11010)
-			reg.Add("test", "/new/path", 11020)
-			Expect(reg.List()).To(HaveLen(1))
-			Expect(reg.List()[0].Path).To(Equal("/new/path"))
-			Expect(reg.List()[0].Port).To(Equal(11020))
-		})
-	})
-
-	Describe("Save and Load", func() {
-		It("persists port field", func() {
-			reg.Add("test", "/path/test", 11010)
-			err := reg.Save(tempDir)
-			Expect(err).NotTo(HaveOccurred())
-
-			loaded, err := spaces.Load(tempDir)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(loaded.List()).To(HaveLen(1))
-			Expect(loaded.List()[0].Port).To(Equal(11010))
-		})
-	})
-})
 
 var _ = Describe("Create", func() {
 	var (
@@ -158,11 +74,11 @@ var _ = Describe("Create", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// Verify port allocation in registry
-		reg, err := spaces.Load(destDir)
+		reg, err := registry.Load(destDir)
 		Expect(err).NotTo(HaveOccurred())
-		space := reg.Get(filepath.Base(worktreePath))
-		Expect(space).NotTo(BeNil())
-		Expect(space.Port).To(Equal(spaces.BasePort))
+		entry := reg.Get(filepath.Base(worktreePath))
+		Expect(entry).NotTo(BeNil())
+		Expect(entry.Port).To(Equal(registry.BasePort))
 	})
 
 	It("returns an error when branch already exists", func() {
@@ -252,12 +168,12 @@ var _ = Describe("Open", func() {
 	})
 
 	It("returns an error for non-existent space", func() {
-		opts := spaces.OpenOptions{
+		opts := spaces.OpenSessionOptions{
 			DestDir: destDir,
 			Name:    "non-existent",
 		}
 
-		err := spaces.Open(opts)
+		err := spaces.OpenSession(opts)
 
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("space does not exist"))
@@ -268,12 +184,12 @@ var _ = Describe("Open", func() {
 		err := os.MkdirAll(regularDir, 0755)
 		Expect(err).NotTo(HaveOccurred())
 
-		opts := spaces.OpenOptions{
+		opts := spaces.OpenSessionOptions{
 			DestDir: destDir,
 			Name:    "regular-dir",
 		}
 
-		err = spaces.Open(opts)
+		err = spaces.OpenSession(opts)
 
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("not a git worktree"))
@@ -284,12 +200,12 @@ var _ = Describe("Open", func() {
 		err := os.WriteFile(filePath, []byte("test"), 0644)
 		Expect(err).NotTo(HaveOccurred())
 
-		opts := spaces.OpenOptions{
+		opts := spaces.OpenSessionOptions{
 			DestDir: destDir,
 			Name:    "file-not-dir",
 		}
 
-		err = spaces.Open(opts)
+		err = spaces.OpenSession(opts)
 
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("not a directory"))
@@ -376,26 +292,26 @@ var _ = Describe("Open Integration", func() {
 		spaceName = filepath.Base(worktreePath)
 
 		// Verify port was allocated
-		reg, err := spaces.Load(destDir)
+		reg, err := registry.Load(destDir)
 		Expect(err).NotTo(HaveOccurred())
-		space := reg.Get(spaceName)
-		Expect(space).NotTo(BeNil())
-		Expect(space.Port).To(Equal(spaces.BasePort))
+		entry := reg.Get(spaceName)
+		Expect(entry).NotTo(BeNil())
+		Expect(entry.Port).To(Equal(registry.BasePort))
 
 		// Create detached tmux session first
 		err = tmux.NewSessionDetached(spaceName, worktreePath)
 		Expect(err).NotTo(HaveOccurred())
 
 		// Open the space - will set env vars, then fail on attach (not in terminal)
-		openOpts := spaces.OpenOptions{
+		openOpts := spaces.OpenSessionOptions{
 			DestDir: destDir,
 			Name:    spaceName,
 		}
-		_ = spaces.Open(openOpts) // Ignore attach error
+		_ = spaces.OpenSession(openOpts) // Ignore attach error
 
 		// Verify SPACE_PORT was set in the tmux session
 		value, err := getSessionEnv(spaceName, "SPACE_PORT")
 		Expect(err).NotTo(HaveOccurred())
-		Expect(value).To(Equal(strconv.Itoa(spaces.BasePort)))
+		Expect(value).To(Equal(strconv.Itoa(registry.BasePort)))
 	})
 })

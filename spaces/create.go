@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/johanhenriksson/automo/git"
+	"github.com/johanhenriksson/automo/registry"
 )
 
 // CreateOptions contains the parameters for creating a new space.
@@ -40,10 +41,15 @@ func Create(opts CreateOptions) (string, error) {
 	}
 
 	// Register the new space
-	reg, err := Load(opts.DestDir)
+	reg, err := registry.Load(opts.DestDir)
 	if err == nil {
 		reg.Add(filepath.Base(worktreePath), worktreePath, reg.AllocatePort())
 		_ = reg.Save(opts.DestDir)
+	}
+
+	// Run on_create hooks (warn on failure, don't abort)
+	if space, err := Open(worktreePath); err == nil {
+		space.RunOnCreate()
 	}
 
 	return worktreePath, nil
