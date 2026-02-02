@@ -9,10 +9,17 @@ import (
 
 const registryFile = "spaces.yaml"
 
+// Port allocation constants.
+const (
+	BasePort  = 11010
+	PortRange = 10
+)
+
 // Space represents a tracked workspace.
 type Space struct {
 	Name string `yaml:"name"`
 	Path string `yaml:"path"`
+	Port int    `yaml:"port"`
 }
 
 // Registry holds a list of tracked spaces.
@@ -50,14 +57,36 @@ func (r *Registry) Save(dir string) error {
 }
 
 // Add adds a space to the registry. Idempotent - updates path if name exists.
-func (r *Registry) Add(name, path string) {
+func (r *Registry) Add(name, path string, port int) {
 	for i, s := range r.Spaces {
 		if s.Name == name {
 			r.Spaces[i].Path = path
+			r.Spaces[i].Port = port
 			return
 		}
 	}
-	r.Spaces = append(r.Spaces, Space{Name: name, Path: path})
+	r.Spaces = append(r.Spaces, Space{Name: name, Path: path, Port: port})
+}
+
+// Get returns a pointer to the space with the given name, or nil if not found.
+func (r *Registry) Get(name string) *Space {
+	for i, s := range r.Spaces {
+		if s.Name == name {
+			return &r.Spaces[i]
+		}
+	}
+	return nil
+}
+
+// AllocatePort finds the next available port range.
+func (r *Registry) AllocatePort() int {
+	maxPort := BasePort - PortRange
+	for _, s := range r.Spaces {
+		if s.Port > maxPort {
+			maxPort = s.Port
+		}
+	}
+	return maxPort + PortRange
 }
 
 // Remove removes a space by name.

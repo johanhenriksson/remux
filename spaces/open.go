@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/johanhenriksson/automo/git"
 	"github.com/johanhenriksson/automo/tmux"
@@ -34,6 +35,17 @@ func Open(opts OpenOptions) error {
 
 	if !git.IsWorktree(spacePath) {
 		return fmt.Errorf("not a git worktree: %s", spacePath)
+	}
+
+	// Look up space port and add to env vars
+	reg, err := Load(opts.DestDir)
+	if err == nil {
+		if space := reg.Get(opts.Name); space != nil && space.Port > 0 {
+			if opts.EnvVars == nil {
+				opts.EnvVars = make(map[string]string)
+			}
+			opts.EnvVars["SPACE_PORT"] = strconv.Itoa(space.Port)
+		}
 	}
 
 	if tmux.SessionExists(opts.Name) {
