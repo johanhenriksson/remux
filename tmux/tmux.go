@@ -40,13 +40,25 @@ func Attach(name string) error {
 }
 
 // NewSession creates a new tmux session and attaches to it.
-func NewSession(name, workdir string) error {
-	return runInteractive("new-session", "-s", sanitizeName(name), "-c", workdir)
+func NewSession(name, workdir string, env map[string]string) error {
+	args := []string{"new-session", "-s", sanitizeName(name), "-c", workdir}
+	args = append(args, envArgs(env)...)
+	return runInteractive(args...)
 }
 
 // NewSessionDetached creates a new tmux session without attaching.
-func NewSessionDetached(name, workdir string) error {
-	return run("new-session", "-d", "-s", sanitizeName(name), "-c", workdir)
+func NewSessionDetached(name, workdir string, env map[string]string) error {
+	args := []string{"new-session", "-d", "-s", sanitizeName(name), "-c", workdir}
+	args = append(args, envArgs(env)...)
+	return run(args...)
+}
+
+func envArgs(env map[string]string) []string {
+	var args []string
+	for key, value := range env {
+		args = append(args, "-e", key+"="+value)
+	}
+	return args
 }
 
 // KillSession kills a tmux session if it exists.
@@ -69,7 +81,3 @@ func SessionName(name string) string {
 	return sanitizeName(name)
 }
 
-// SetEnvironment sets a session-level environment variable.
-func SetEnvironment(session, key, value string) error {
-	return run("set-environment", "-t", sanitizeName(session), key, value)
-}

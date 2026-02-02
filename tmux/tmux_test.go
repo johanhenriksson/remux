@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -24,19 +25,36 @@ func tmuxAvailable() bool {
 	return err == nil
 }
 
-// getSessionEnv retrieves an environment variable from a tmux session.
-func getSessionEnv(session, key string) (string, error) {
-	out, err := exec.Command("tmux", "show-environment", "-t", session, key).Output()
+// getEnvFromShell executes echo $KEY inside the tmux session and returns the value.
+// this verifies that the env var is actually accessible to the shell, not just set at the session level.
+func getEnvFromShell(session, key string) (string, error) {
+	// wait for the shell to start
+	time.Sleep(500 * time.Millisecond)
+
+	marker := fmt.Sprintf("__MARKER_%d__", time.Now().UnixNano())
+	cmd := fmt.Sprintf("echo '%s'$%s'%s'", marker, key, marker)
+
+	if err := exec.Command("tmux", "send-keys", "-t", session, cmd, "Enter").Run(); err != nil {
+		return "", fmt.Errorf("send-keys failed: %w", err)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	out, err := exec.Command("tmux", "capture-pane", "-t", session, "-p").Output()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("capture-pane failed: %w", err)
 	}
-	// Output format: "KEY=value\n"
-	line := strings.TrimSpace(string(out))
-	parts := strings.SplitN(line, "=", 2)
-	if len(parts) != 2 {
-		return "", fmt.Errorf("unexpected format: %s", line)
+
+	lines := strings.Split(string(out), "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, marker) && strings.HasSuffix(line, marker) {
+			value := strings.TrimPrefix(line, marker)
+			value = strings.TrimSuffix(value, marker)
+			return value, nil
+		}
 	}
-	return parts[1], nil
+
+	return "", fmt.Errorf("marker not found in output: %s", string(out))
 }
 
 var _ = Describe("Tmux", func() {
@@ -78,10 +96,45 @@ var _ = Describe("Tmux", func() {
 				workdir, err := os.Getwd()
 				Expect(err).NotTo(HaveOccurred())
 
-				err = tmux.NewSessionDetached(testSession, workdir)
+				err = tmux.NewSessionDetached(testSession, workdir, nil)
 				Expect(err).NotTo(HaveOccurred())
 
 				Expect(tmux.SessionExists(testSession)).To(BeTrue())
+			})
+
+			It("creates a session with environment variables accessible to the shell", func() {
+				workdir, err := os.Getwd()
+				Expect(err).NotTo(HaveOccurred())
+
+				env := map[string]string{
+					"TEST_VAR": "test_value",
+				}
+				err = tmux.NewSessionDetached(testSession, workdir, env)
+				Expect(err).NotTo(HaveOccurred())
+
+				value, err := getEnvFromShell(testSession, "TEST_VAR")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(value).To(Equal("test_value"))
+			})
+
+			It("creates a session with multiple environment variables accessible to the shell", func() {
+				workdir, err := os.Getwd()
+				Expect(err).NotTo(HaveOccurred())
+
+				env := map[string]string{
+					"VAR_ONE": "value1",
+					"VAR_TWO": "value2",
+				}
+				err = tmux.NewSessionDetached(testSession, workdir, env)
+				Expect(err).NotTo(HaveOccurred())
+
+				val1, err := getEnvFromShell(testSession, "VAR_ONE")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(val1).To(Equal("value1"))
+
+				val2, err := getEnvFromShell(testSession, "VAR_TWO")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(val2).To(Equal("value2"))
 			})
 		})
 
@@ -94,7 +147,7 @@ var _ = Describe("Tmux", func() {
 				workdir, err := os.Getwd()
 				Expect(err).NotTo(HaveOccurred())
 
-				err = tmux.NewSessionDetached(testSession, workdir)
+				err = tmux.NewSessionDetached(testSession, workdir, nil)
 				Expect(err).NotTo(HaveOccurred())
 
 				Expect(tmux.SessionExists(testSession)).To(BeTrue())
@@ -106,7 +159,7 @@ var _ = Describe("Tmux", func() {
 				workdir, err := os.Getwd()
 				Expect(err).NotTo(HaveOccurred())
 
-				err = tmux.NewSessionDetached(testSession, workdir)
+				err = tmux.NewSessionDetached(testSession, workdir, nil)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(tmux.SessionExists(testSession)).To(BeTrue())
 
@@ -116,64 +169,7 @@ var _ = Describe("Tmux", func() {
 			})
 
 			It("does not error when session does not exist", func() {
-				// KillSession returns nothing, so just verify it doesn't panic
 				tmux.KillSession("non-existent-session-12345")
-			})
-		})
-
-		Describe("SetEnvironment", func() {
-			It("sets an environment variable on a session", func() {
-				workdir, err := os.Getwd()
-				Expect(err).NotTo(HaveOccurred())
-
-				err = tmux.NewSessionDetached(testSession, workdir)
-				Expect(err).NotTo(HaveOccurred())
-
-				err = tmux.SetEnvironment(testSession, "TEST_VAR", "test_value")
-				Expect(err).NotTo(HaveOccurred())
-
-				value, err := getSessionEnv(testSession, "TEST_VAR")
-				Expect(err).NotTo(HaveOccurred())
-				Expect(value).To(Equal("test_value"))
-			})
-
-			It("can set multiple environment variables", func() {
-				workdir, err := os.Getwd()
-				Expect(err).NotTo(HaveOccurred())
-
-				err = tmux.NewSessionDetached(testSession, workdir)
-				Expect(err).NotTo(HaveOccurred())
-
-				err = tmux.SetEnvironment(testSession, "VAR_ONE", "value1")
-				Expect(err).NotTo(HaveOccurred())
-				err = tmux.SetEnvironment(testSession, "VAR_TWO", "value2")
-				Expect(err).NotTo(HaveOccurred())
-
-				val1, err := getSessionEnv(testSession, "VAR_ONE")
-				Expect(err).NotTo(HaveOccurred())
-				Expect(val1).To(Equal("value1"))
-
-				val2, err := getSessionEnv(testSession, "VAR_TWO")
-				Expect(err).NotTo(HaveOccurred())
-				Expect(val2).To(Equal("value2"))
-			})
-
-			It("can overwrite an existing environment variable", func() {
-				workdir, err := os.Getwd()
-				Expect(err).NotTo(HaveOccurred())
-
-				err = tmux.NewSessionDetached(testSession, workdir)
-				Expect(err).NotTo(HaveOccurred())
-
-				err = tmux.SetEnvironment(testSession, "TEST_VAR", "original")
-				Expect(err).NotTo(HaveOccurred())
-
-				err = tmux.SetEnvironment(testSession, "TEST_VAR", "updated")
-				Expect(err).NotTo(HaveOccurred())
-
-				value, err := getSessionEnv(testSession, "TEST_VAR")
-				Expect(err).NotTo(HaveOccurred())
-				Expect(value).To(Equal("updated"))
 			})
 		})
 	})

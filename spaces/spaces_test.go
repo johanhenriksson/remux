@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -226,17 +227,33 @@ func tmuxAvailable() bool {
 	return err == nil
 }
 
-func getSessionEnv(session, key string) (string, error) {
-	out, err := exec.Command("tmux", "show-environment", "-t", session, key).Output()
+func getEnvFromShell(session, key string) (string, error) {
+	time.Sleep(500 * time.Millisecond)
+
+	marker := fmt.Sprintf("__MARKER_%d__", time.Now().UnixNano())
+	cmd := fmt.Sprintf("echo '%s'$%s'%s'", marker, key, marker)
+
+	if err := exec.Command("tmux", "send-keys", "-t", session, cmd, "Enter").Run(); err != nil {
+		return "", fmt.Errorf("send-keys failed: %w", err)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	out, err := exec.Command("tmux", "capture-pane", "-t", session, "-p").Output()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("capture-pane failed: %w", err)
 	}
-	line := strings.TrimSpace(string(out))
-	parts := strings.SplitN(line, "=", 2)
-	if len(parts) != 2 {
-		return "", fmt.Errorf("unexpected format: %s", line)
+
+	lines := strings.Split(string(out), "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, marker) && strings.HasSuffix(line, marker) {
+			value := strings.TrimPrefix(line, marker)
+			value = strings.TrimSuffix(value, marker)
+			return value, nil
+		}
 	}
-	return parts[1], nil
+
+	return "", fmt.Errorf("marker not found in output: %s", string(out))
 }
 
 var _ = Describe("Open Integration", func() {
@@ -298,19 +315,15 @@ var _ = Describe("Open Integration", func() {
 		Expect(entry).NotTo(BeNil())
 		Expect(entry.Port).To(Equal(registry.BasePort))
 
-		// Create detached tmux session first
-		err = tmux.NewSessionDetached(spaceName, worktreePath)
-		Expect(err).NotTo(HaveOccurred())
-
-		// Open the space - will set env vars, then fail on attach (not in terminal)
+		// Open the space - creates session with env vars, then fails on attach (not in terminal)
 		openOpts := spaces.OpenSessionOptions{
 			DestDir: destDir,
 			Name:    spaceName,
 		}
 		_ = spaces.OpenSession(openOpts) // Ignore attach error
 
-		// Verify SPACE_PORT was set in the tmux session
-		value, err := getSessionEnv(spaceName, "SPACE_PORT")
+		// Verify SPACE_PORT is accessible in the shell
+		value, err := getEnvFromShell(spaceName, "SPACE_PORT")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(value).To(Equal(strconv.Itoa(registry.BasePort)))
 	})
