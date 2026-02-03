@@ -15,10 +15,11 @@ var templatePattern = regexp.MustCompile(`\{\{\s*(.+?)\s*\}\}`)
 func EvaluateTemplate(input string, space Space) (string, error) {
 	env := map[string]any{
 		"space": map[string]any{
-			"Name": space.Name,
-			"Path": space.Path,
-			"Port": space.Port,
-			"ID":   space.ID,
+			"Name":     space.Name,
+			"Path":     space.Path,
+			"Port":     space.Port,
+			"ID":       space.ID,
+			"RepoRoot": space.RepoRoot,
 		},
 		"env": getEnvMap(),
 	}

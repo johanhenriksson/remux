@@ -26,19 +26,21 @@ type Hooks struct {
 
 // Space provides template variables for expression evaluation.
 type Space struct {
-	Name string
-	Path string
-	Port int
-	ID   string
+	Name     string
+	Path     string
+	Port     int
+	ID       string
+	RepoRoot string
 }
 
 // NewSpace creates a Space from the given values, computing the ID automatically.
-func NewSpace(name, path string, port int) Space {
+func NewSpace(name, path string, port int, repoRoot string) Space {
 	return Space{
-		Name: name,
-		Path: path,
-		Port: port,
-		ID:   strings.ReplaceAll(name, "-", "_"),
+		Name:     name,
+		Path:     path,
+		Port:     port,
+		ID:       strings.ReplaceAll(name, "-", "_"),
+		RepoRoot: repoRoot,
 	}
 }
 

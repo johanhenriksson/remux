@@ -11,10 +11,11 @@ import (
 
 // Space represents a loaded workspace with config.
 type Space struct {
-	Name   string
-	Path   string
-	Port   int
-	config *config.Config
+	Name     string
+	Path     string
+	Port     int
+	RepoRoot string
+	config   *config.Config
 }
 
 // ID returns a sanitized identifier for the space (hyphens replaced with underscores).
@@ -44,10 +45,11 @@ func Open(worktreePath string) (*Space, error) {
 	}
 
 	space := &Space{
-		Name:   entry.Name,
-		Path:   entry.Path,
-		Port:   entry.Port,
-		config: cfg,
+		Name:     entry.Name,
+		Path:     entry.Path,
+		Port:     entry.Port,
+		RepoRoot: entry.RepoRoot,
+		config:   cfg,
 	}
 
 	return space, nil
@@ -55,7 +57,7 @@ func Open(worktreePath string) (*Space, error) {
 
 // configSpace returns the config.Space context for template evaluation.
 func (s *Space) configSpace() config.Space {
-	return config.NewSpace(s.Name, s.Path, s.Port)
+	return config.NewSpace(s.Name, s.Path, s.Port, s.RepoRoot)
 }
 
 // RunOnCreate executes on_create hooks. Prints warnings on failure.

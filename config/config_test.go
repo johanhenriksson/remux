@@ -118,10 +118,11 @@ hooks:
 var _ = Describe("Template", func() {
 	Describe("EvaluateTemplate", func() {
 		ctx := config.Space{
-			Name: "test-space",
-			Path: "/path/to/space",
-			Port: 11020,
-			ID:   "test_space",
+			Name:     "test-space",
+			Path:     "/path/to/space",
+			Port:     11020,
+			ID:       "test_space",
+			RepoRoot: "/repo/root",
 		}
 
 		It("evaluates simple expressions", func() {
@@ -146,6 +147,12 @@ var _ = Describe("Template", func() {
 			result, err := config.EvaluateTemplate("{{ space.Name }} on port {{ space.Port }}", ctx)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result).To(Equal("test-space on port 11020"))
+		})
+
+		It("evaluates RepoRoot expression", func() {
+			result, err := config.EvaluateTemplate("{{ space.RepoRoot }}/scripts/setup.sh", ctx)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).To(Equal("/repo/root/scripts/setup.sh"))
 		})
 
 		It("returns string unchanged when no templates", func() {
