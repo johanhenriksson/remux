@@ -38,20 +38,20 @@ var _ = Describe("Registry", func() {
 		})
 
 		It("returns next port after single space", func() {
-			reg.Add("space1", "/path/1", registry.BasePort)
+			reg.Add("space1", "/path/1", registry.BasePort, "/repo/root")
 			Expect(reg.AllocatePort()).To(Equal(registry.BasePort + registry.PortRange))
 		})
 
 		It("returns max port + PortRange for multiple spaces", func() {
-			reg.Add("space1", "/path/1", 11010)
-			reg.Add("space2", "/path/2", 11020)
-			reg.Add("space3", "/path/3", 11030)
+			reg.Add("space1", "/path/1", 11010, "/repo/root")
+			reg.Add("space2", "/path/2", 11020, "/repo/root")
+			reg.Add("space3", "/path/3", 11030, "/repo/root")
 			Expect(reg.AllocatePort()).To(Equal(11040))
 		})
 
 		It("handles non-sequential ports", func() {
-			reg.Add("space1", "/path/1", 11010)
-			reg.Add("space2", "/path/2", 11050) // gap
+			reg.Add("space1", "/path/1", 11010, "/repo/root")
+			reg.Add("space2", "/path/2", 11050, "/repo/root") // gap
 			Expect(reg.AllocatePort()).To(Equal(11060))
 		})
 	})
@@ -62,7 +62,7 @@ var _ = Describe("Registry", func() {
 		})
 
 		It("returns pointer to existing entry", func() {
-			reg.Add("test", "/path/test", 11010)
+			reg.Add("test", "/path/test", 11010, "/repo/root")
 			entry := reg.Get("test")
 			Expect(entry).NotTo(BeNil())
 			Expect(entry.Name).To(Equal("test"))
@@ -72,14 +72,14 @@ var _ = Describe("Registry", func() {
 
 	Describe("Add", func() {
 		It("adds new entry with port", func() {
-			reg.Add("new", "/path/new", 11010)
+			reg.Add("new", "/path/new", 11010, "/repo/root")
 			Expect(reg.List()).To(HaveLen(1))
 			Expect(reg.List()[0].Port).To(Equal(11010))
 		})
 
 		It("updates existing entry", func() {
-			reg.Add("test", "/old/path", 11010)
-			reg.Add("test", "/new/path", 11020)
+			reg.Add("test", "/old/path", 11010, "/repo/root")
+			reg.Add("test", "/new/path", 11020, "/repo/root2")
 			Expect(reg.List()).To(HaveLen(1))
 			Expect(reg.List()[0].Path).To(Equal("/new/path"))
 			Expect(reg.List()[0].Port).To(Equal(11020))
@@ -87,8 +87,8 @@ var _ = Describe("Registry", func() {
 	})
 
 	Describe("Save and Load", func() {
-		It("persists port field", func() {
-			reg.Add("test", "/path/test", 11010)
+		It("persists port and repo_root fields", func() {
+			reg.Add("test", "/path/test", 11010, "/repo/root")
 			err := reg.Save(tempDir)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -96,6 +96,7 @@ var _ = Describe("Registry", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(loaded.List()).To(HaveLen(1))
 			Expect(loaded.List()[0].Port).To(Equal(11010))
+			Expect(loaded.List()[0].RepoRoot).To(Equal("/repo/root"))
 		})
 	})
 })
