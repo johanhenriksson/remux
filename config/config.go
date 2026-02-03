@@ -85,7 +85,12 @@ func (c *Config) RunOnCreate(space Space) {
 	if len(c.Hooks.OnCreate) == 0 {
 		return
 	}
-	if err := runHooks(c.Hooks.OnCreate, space, space.Path); err != nil {
+	env, err := c.ResolveEnv(space)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: on_create hook failed to resolve env: %v\n", err)
+		return
+	}
+	if err := runHooks(c.Hooks.OnCreate, space, space.Path, env); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: on_create hook failed: %v\n", err)
 	}
 }
@@ -95,7 +100,11 @@ func (c *Config) RunOnOpen(space Space) error {
 	if len(c.Hooks.OnOpen) == 0 {
 		return nil
 	}
-	if err := runHooks(c.Hooks.OnOpen, space, space.Path); err != nil {
+	env, err := c.ResolveEnv(space)
+	if err != nil {
+		return fmt.Errorf("on_open hook failed to resolve env: %w", err)
+	}
+	if err := runHooks(c.Hooks.OnOpen, space, space.Path, env); err != nil {
 		return fmt.Errorf("on_open hook failed: %w", err)
 	}
 	return nil
@@ -106,7 +115,11 @@ func (c *Config) RunOnDrop(space Space) error {
 	if len(c.Hooks.OnDrop) == 0 {
 		return nil
 	}
-	if err := runHooks(c.Hooks.OnDrop, space, space.Path); err != nil {
+	env, err := c.ResolveEnv(space)
+	if err != nil {
+		return fmt.Errorf("on_drop hook failed to resolve env: %w", err)
+	}
+	if err := runHooks(c.Hooks.OnDrop, space, space.Path, env); err != nil {
 		return fmt.Errorf("on_drop hook failed: %w", err)
 	}
 	return nil

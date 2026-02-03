@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -16,6 +17,9 @@ var _ = Describe("Config", func() {
 	BeforeEach(func() {
 		var err error
 		tmpDir, err = os.MkdirTemp("", "config-test")
+		Expect(err).NotTo(HaveOccurred())
+		// Resolve symlinks for consistent path comparison (macOS /var -> /private/var)
+		tmpDir, err = filepath.EvalSymlinks(tmpDir)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -66,6 +70,82 @@ hooks:
 			cfg, err := config.Load(tmpDir)
 			Expect(err).To(HaveOccurred())
 			Expect(cfg).To(BeNil())
+		})
+	})
+
+	Describe("Hooks", func() {
+		It("receives resolved env vars", func() {
+			outputFile := filepath.Join(tmpDir, "env_output.txt")
+			cfg := &config.Config{
+				Env: map[string]string{
+					"TEST_VAR": "{{ space.Port }}",
+				},
+				Hooks: config.Hooks{
+					OnOpen: []string{"echo $TEST_VAR > " + outputFile},
+				},
+			}
+
+			space := config.NewSpace("test-space", tmpDir, 12345, tmpDir)
+			err := cfg.RunOnOpen(space)
+			Expect(err).NotTo(HaveOccurred())
+
+			content, err := os.ReadFile(outputFile)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(strings.TrimSpace(string(content))).To(Equal("12345"))
+		})
+
+		It("runs in the correct working directory", func() {
+			outputFile := filepath.Join(tmpDir, "pwd_output.txt")
+			cfg := &config.Config{
+				Hooks: config.Hooks{
+					OnOpen: []string{"pwd > " + outputFile},
+				},
+			}
+
+			space := config.NewSpace("test-space", tmpDir, 11000, tmpDir)
+			err := cfg.RunOnOpen(space)
+			Expect(err).NotTo(HaveOccurred())
+
+			content, err := os.ReadFile(outputFile)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(strings.TrimSpace(string(content))).To(Equal(tmpDir))
+		})
+
+		It("supports shell features", func() {
+			outputFile := filepath.Join(tmpDir, "shell_output.txt")
+			cfg := &config.Config{
+				Hooks: config.Hooks{
+					OnOpen: []string{"echo test || true && echo success > " + outputFile},
+				},
+			}
+
+			space := config.NewSpace("test-space", tmpDir, 11000, tmpDir)
+			err := cfg.RunOnOpen(space)
+			Expect(err).NotTo(HaveOccurred())
+
+			content, err := os.ReadFile(outputFile)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(strings.TrimSpace(string(content))).To(Equal("success"))
+		})
+
+		It("inherits parent environment", func() {
+			outputFile := filepath.Join(tmpDir, "parent_env_output.txt")
+			os.Setenv("REMUX_TEST_PARENT_VAR", "inherited_value")
+			defer os.Unsetenv("REMUX_TEST_PARENT_VAR")
+
+			cfg := &config.Config{
+				Hooks: config.Hooks{
+					OnOpen: []string{"echo $REMUX_TEST_PARENT_VAR > " + outputFile},
+				},
+			}
+
+			space := config.NewSpace("test-space", tmpDir, 11000, tmpDir)
+			err := cfg.RunOnOpen(space)
+			Expect(err).NotTo(HaveOccurred())
+
+			content, err := os.ReadFile(outputFile)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(strings.TrimSpace(string(content))).To(Equal("inherited_value"))
 		})
 	})
 
