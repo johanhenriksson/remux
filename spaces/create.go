@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/johanhenriksson/automo/git"
-	"github.com/johanhenriksson/automo/registry"
+	"github.com/johanhenriksson/remux/git"
+	"github.com/johanhenriksson/remux/registry"
 )
 
 // CreateOptions contains the parameters for creating a new space.

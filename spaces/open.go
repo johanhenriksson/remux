@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"github.com/johanhenriksson/automo/git"
-	"github.com/johanhenriksson/automo/tmux"
+	"github.com/johanhenriksson/remux/git"
+	"github.com/johanhenriksson/remux/tmux"
 )
 
 // OpenSessionOptions contains the parameters for opening a space session.

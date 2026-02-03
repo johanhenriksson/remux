@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/johanhenriksson/automo/config"
-	"github.com/johanhenriksson/automo/registry"
+	"github.com/johanhenriksson/remux/config"
+	"github.com/johanhenriksson/remux/registry"
 )
 
 // Space represents a loaded workspace with config.

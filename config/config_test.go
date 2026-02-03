@@ -7,7 +7,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/johanhenriksson/automo/config"
+	"github.com/johanhenriksson/remux/config"
 )
 
 var _ = Describe("Config", func() {
@@ -45,7 +45,7 @@ hooks:
   on_drop:
     - echo "dropping"
 `
-			err := os.WriteFile(filepath.Join(tmpDir, ".aut.yaml"), []byte(content), 0644)
+			err := os.WriteFile(filepath.Join(tmpDir, ".remux.yaml"), []byte(content), 0644)
 			Expect(err).NotTo(HaveOccurred())
 
 			cfg, err := config.Load(tmpDir)
@@ -60,7 +60,7 @@ hooks:
 
 		It("returns error for invalid YAML", func() {
 			content := `env: [invalid`
-			err := os.WriteFile(filepath.Join(tmpDir, ".aut.yaml"), []byte(content), 0644)
+			err := os.WriteFile(filepath.Join(tmpDir, ".remux.yaml"), []byte(content), 0644)
 			Expect(err).NotTo(HaveOccurred())
 
 			cfg, err := config.Load(tmpDir)

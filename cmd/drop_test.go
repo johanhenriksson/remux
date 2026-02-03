@@ -8,7 +8,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/johanhenriksson/automo/spaces"
+	"github.com/johanhenriksson/remux/spaces"
 )
 
 var _ = Describe("Drop", func() {

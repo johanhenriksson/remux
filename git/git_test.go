@@ -9,7 +9,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/johanhenriksson/automo/git"
+	"github.com/johanhenriksson/remux/git"
 )
 
 func TestGit(t *testing.T) {

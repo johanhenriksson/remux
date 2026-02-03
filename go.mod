@@ -1,4 +1,4 @@
-module github.com/johanhenriksson/automo
+module github.com/johanhenriksson/remux
 
 go 1.25.1
 

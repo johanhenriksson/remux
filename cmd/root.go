@@ -8,8 +8,8 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "aut",
-	Short: "A CLI tool for managing git worktrees",
+	Use:   "remux",
+	Short: "Run multiple coding agents in parallel using git worktrees and tmux",
 }
 
 func Execute() {
