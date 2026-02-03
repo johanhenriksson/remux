@@ -13,9 +13,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/johanhenriksson/automo/registry"
-	"github.com/johanhenriksson/automo/spaces"
-	"github.com/johanhenriksson/automo/tmux"
+	"github.com/johanhenriksson/remux/registry"
+	"github.com/johanhenriksson/remux/spaces"
+	"github.com/johanhenriksson/remux/tmux"
 )
 
 func TestSpaces(t *testing.T) {
@@ -227,33 +227,61 @@ func tmuxAvailable() bool {
 	return err == nil
 }
 
-func getEnvFromShell(session, key string) (string, error) {
-	time.Sleep(500 * time.Millisecond)
+// waitForShellReady waits until the shell in the tmux session has initialized.
+func waitForShellReady(session string, timeout time.Duration) error {
+	interval := 100 * time.Millisecond
+	deadline := time.Now().Add(timeout)
 
+	for time.Now().Before(deadline) {
+		out, err := exec.Command("tmux", "capture-pane", "-t", session, "-p").Output()
+		if err == nil && len(strings.TrimSpace(string(out))) > 0 {
+			return nil
+		}
+		time.Sleep(interval)
+	}
+	return fmt.Errorf("shell not ready after %v", timeout)
+}
+
+func getEnvFromShell(session, key string) (string, error) {
 	marker := fmt.Sprintf("__MARKER_%d__", time.Now().UnixNano())
 	cmd := fmt.Sprintf("echo '%s'$%s'%s'", marker, key, marker)
 
+	timeout := 5 * time.Second
+	interval := 100 * time.Millisecond
+	deadline := time.Now().Add(timeout)
+
+	// Wait for shell to be ready
+	if err := waitForShellReady(session, timeout); err != nil {
+		return "", err
+	}
+
+	// Send the command
 	if err := exec.Command("tmux", "send-keys", "-t", session, cmd, "Enter").Run(); err != nil {
 		return "", fmt.Errorf("send-keys failed: %w", err)
 	}
 
-	time.Sleep(500 * time.Millisecond)
-
-	out, err := exec.Command("tmux", "capture-pane", "-t", session, "-p").Output()
-	if err != nil {
-		return "", fmt.Errorf("capture-pane failed: %w", err)
-	}
-
-	lines := strings.Split(string(out), "\n")
-	for _, line := range lines {
-		if strings.HasPrefix(line, marker) && strings.HasSuffix(line, marker) {
-			value := strings.TrimPrefix(line, marker)
-			value = strings.TrimSuffix(value, marker)
-			return value, nil
+	// Poll for the marker in the output
+	for time.Now().Before(deadline) {
+		out, err := exec.Command("tmux", "capture-pane", "-t", session, "-p").Output()
+		if err != nil {
+			time.Sleep(interval)
+			continue
 		}
+
+		lines := strings.Split(string(out), "\n")
+		for _, line := range lines {
+			if strings.HasPrefix(line, marker) && strings.HasSuffix(line, marker) {
+				value := strings.TrimPrefix(line, marker)
+				value = strings.TrimSuffix(value, marker)
+				return value, nil
+			}
+		}
+
+		time.Sleep(interval)
 	}
 
-	return "", fmt.Errorf("marker not found in output: %s", string(out))
+	out, _ := exec.Command("tmux", "capture-pane", "-t", session, "-p").Output()
+	return "", fmt.Errorf("marker not found in output after %v: %s", timeout, string(out))
 }
 
 var _ = Describe("Open Integration", func() {

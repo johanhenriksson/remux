@@ -5,9 +5,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/johanhenriksson/automo/git"
-	"github.com/johanhenriksson/automo/registry"
-	"github.com/johanhenriksson/automo/tmux"
+	"github.com/johanhenriksson/remux/git"
+	"github.com/johanhenriksson/remux/registry"
+	"github.com/johanhenriksson/remux/tmux"
 )
 
 // Drop removes a git worktree at the given path and unregisters it.

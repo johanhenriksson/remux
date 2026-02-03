@@ -9,7 +9,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const configFile = ".aut.yaml"
+const configFile = ".remux.yaml"
 
 // Config represents a workspace configuration file.
 type Config struct {

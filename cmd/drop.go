@@ -5,13 +5,13 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/johanhenriksson/automo/spaces"
+	"github.com/johanhenriksson/remux/spaces"
 	"github.com/spf13/cobra"
 )
 
 var dropCmd = &cobra.Command{
 	Use:   "drop",
-	Short: "Remove the current worktree and its directory",
+	Short: "Remove the current workspace and clean up",
 	Args:  cobra.NoArgs,
 	RunE:  runDrop,
 }

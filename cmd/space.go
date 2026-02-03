@@ -5,52 +5,46 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/johanhenriksson/automo/git"
-	"github.com/johanhenriksson/automo/registry"
-	"github.com/johanhenriksson/automo/spaces"
+	"github.com/johanhenriksson/remux/git"
+	"github.com/johanhenriksson/remux/registry"
+	"github.com/johanhenriksson/remux/spaces"
 	"github.com/spf13/cobra"
 )
 
-var spaceDestDir string
+var destDir string
 
-var spaceCmd = &cobra.Command{
-	Use:   "space",
-	Short: "Manage workspaces",
-}
-
-var spaceNewCmd = &cobra.Command{
+var newCmd = &cobra.Command{
 	Use:   "new <name>",
-	Short: "Create a new branch and worktree",
+	Short: "Create a new workspace",
 	Args:  cobra.ExactArgs(1),
-	RunE:  runSpaceNew,
+	RunE:  runNew,
 }
 
-var spaceOpenCmd = &cobra.Command{
+var openCmd = &cobra.Command{
 	Use:   "open <name>",
-	Short: "Open a tmux session in the specified workspace",
+	Short: "Open or resume a workspace session",
 	Args:  cobra.ExactArgs(1),
-	RunE:  runSpaceOpen,
+	RunE:  runOpen,
 }
 
-var spaceListCmd = &cobra.Command{
+var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all tracked workspaces",
 	Args:  cobra.NoArgs,
-	RunE:  runSpaceList,
+	RunE:  runList,
 }
 
 func init() {
-	rootCmd.AddCommand(spaceCmd)
-	spaceCmd.AddCommand(spaceNewCmd)
-	spaceCmd.AddCommand(spaceOpenCmd)
-	spaceCmd.AddCommand(spaceListCmd)
+	rootCmd.AddCommand(newCmd)
+	rootCmd.AddCommand(openCmd)
+	rootCmd.AddCommand(listCmd)
 
-	spaceNewCmd.Flags().StringVarP(&spaceDestDir, "dest", "d", "", "destination directory for worktrees (default: ~/at)")
-	spaceOpenCmd.Flags().StringVarP(&spaceDestDir, "dest", "d", "", "worktree directory (default: ~/at)")
+	newCmd.Flags().StringVarP(&destDir, "dest", "d", "", "destination directory for worktrees (default: ~/.remux)")
+	openCmd.Flags().StringVarP(&destDir, "dest", "d", "", "worktree directory (default: ~/.remux)")
 }
 
 func getDestDir() (string, error) {
-	return resolveDestDir(spaceDestDir)
+	return resolveDestDir(destDir)
 }
 
 // resolveDestDir resolves the destination directory, expanding ~ and making it absolute.
@@ -60,7 +54,7 @@ func resolveDestDir(dest string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("failed to get home directory: %w", err)
 		}
-		return filepath.Join(homeDir, "at"), nil
+		return filepath.Join(homeDir, ".remux"), nil
 	}
 
 	// Expand ~ to home directory
@@ -76,7 +70,7 @@ func resolveDestDir(dest string) (string, error) {
 	return filepath.Abs(dest)
 }
 
-func runSpaceNew(cmd *cobra.Command, args []string) error {
+func runNew(cmd *cobra.Command, args []string) error {
 	branchName := args[0]
 
 	repoRoot, err := git.FindRoot()
@@ -111,7 +105,7 @@ func runSpaceNew(cmd *cobra.Command, args []string) error {
 	})
 }
 
-func runSpaceOpen(cmd *cobra.Command, args []string) error {
+func runOpen(cmd *cobra.Command, args []string) error {
 	spaceName := args[0]
 
 	dest, err := getDestDir()
@@ -131,7 +125,7 @@ func runSpaceOpen(cmd *cobra.Command, args []string) error {
 	})
 }
 
-func runSpaceList(cmd *cobra.Command, args []string) error {
+func runList(cmd *cobra.Command, args []string) error {
 	dest, err := getDestDir()
 	if err != nil {
 		return err
