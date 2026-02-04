@@ -11,14 +11,14 @@ import (
 )
 
 // Drop removes a git worktree at the given path and unregisters it.
-// Returns an error if the path is not a worktree or has uncommitted changes.
-func Drop(worktreePath string) error {
+// Returns an error if the path is not a worktree or has uncommitted changes (unless force is true).
+func Drop(worktreePath string, force bool) error {
 	if !git.IsWorktree(worktreePath) {
 		return fmt.Errorf("not in a git worktree")
 	}
 
-	if git.HasUncommittedChanges(worktreePath) {
-		return fmt.Errorf("worktree has uncommitted changes, aborting")
+	if !force && git.HasUncommittedChanges(worktreePath) {
+		return fmt.Errorf("worktree has uncommitted changes, use --force to drop anyway")
 	}
 
 	mainRepo, err := git.GetMainRepoPath(worktreePath)

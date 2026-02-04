@@ -9,6 +9,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var forceFlag bool
+
 var dropCmd = &cobra.Command{
 	Use:   "drop",
 	Short: "Remove the current workspace and clean up",
@@ -17,6 +19,7 @@ var dropCmd = &cobra.Command{
 }
 
 func init() {
+	dropCmd.Flags().BoolVarP(&forceFlag, "force", "f", false, "force drop even with uncommitted changes")
 	rootCmd.AddCommand(dropCmd)
 }
 
@@ -26,7 +29,7 @@ func runDrop(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
 
-	if err := spaces.Drop(cwd); err != nil {
+	if err := spaces.Drop(cwd, forceFlag); err != nil {
 		return err
 	}
 
