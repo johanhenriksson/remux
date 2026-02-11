@@ -11,32 +11,42 @@ import (
 
 // CreateOptions contains the parameters for creating a new space.
 type CreateOptions struct {
-	RepoRoot   string // Git repository root
-	DestDir    string // Destination directory for worktrees
-	BranchName string // Name of the branch to create
+	RepoRoot            string // Git repository root
+	DestDir             string // Destination directory for worktrees
+	BranchName          string // Name of the branch to create
+	ReuseExistingBranch bool   // If true, reuse existing branch instead of erroring
 }
 
-// Create creates a new git branch and worktree, and registers it.
+// Create creates a git worktree and registers it as a space.
+// If the branch doesn't exist, it creates a new one.
+// If the branch exists and ReuseExistingBranch is true, it reuses it.
 // Returns the worktree path on success.
 func Create(opts CreateOptions) (string, error) {
 	repoName := filepath.Base(opts.RepoRoot)
-
-	if git.BranchExists(opts.RepoRoot, opts.BranchName) {
-		return "", fmt.Errorf("branch %q already exists", opts.BranchName)
-	}
-
 	worktreePath := filepath.Join(opts.DestDir, fmt.Sprintf("%s-%s", repoName, opts.BranchName))
 
 	if _, err := os.Stat(worktreePath); err == nil {
 		return "", fmt.Errorf("worktree directory already exists: %s", worktreePath)
 	}
 
-	if err := git.CreateBranch(opts.RepoRoot, opts.BranchName); err != nil {
-		return "", fmt.Errorf("failed to create branch: %w", err)
+	branchExists := git.BranchExists(opts.RepoRoot, opts.BranchName)
+	createdBranch := false
+
+	if branchExists && !opts.ReuseExistingBranch {
+		return "", fmt.Errorf("branch %q already exists", opts.BranchName)
+	}
+
+	if !branchExists {
+		if err := git.CreateBranch(opts.RepoRoot, opts.BranchName); err != nil {
+			return "", fmt.Errorf("failed to create branch: %w", err)
+		}
+		createdBranch = true
 	}
 
 	if err := git.AddWorktree(opts.RepoRoot, worktreePath, opts.BranchName); err != nil {
-		_ = git.DeleteBranch(opts.RepoRoot, opts.BranchName)
+		if createdBranch {
+			_ = git.DeleteBranch(opts.RepoRoot, opts.BranchName)
+		}
 		return "", fmt.Errorf("failed to create worktree: %w", err)
 	}
 

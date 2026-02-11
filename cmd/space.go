@@ -1,9 +1,11 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/johanhenriksson/remux/git"
 	"github.com/johanhenriksson/remux/registry"
@@ -70,6 +72,14 @@ func resolveDestDir(dest string) (string, error) {
 	return filepath.Abs(dest)
 }
 
+func confirmPrompt(message string) bool {
+	fmt.Print(message)
+	reader := bufio.NewReader(os.Stdin)
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(strings.ToLower(input))
+	return input == "y" || input == "yes"
+}
+
 func runNew(cmd *cobra.Command, args []string) error {
 	branchName := args[0]
 
@@ -90,10 +100,19 @@ func runNew(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	reuseExisting := false
+	if git.BranchExists(repoRoot, branchName) {
+		if !confirmPrompt(fmt.Sprintf("Branch %q already exists. Reuse it? [y/N] ", branchName)) {
+			return nil
+		}
+		reuseExisting = true
+	}
+
 	worktreePath, err := spaces.Create(spaces.CreateOptions{
-		RepoRoot:   repoRoot,
-		DestDir:    dest,
-		BranchName: branchName,
+		RepoRoot:            repoRoot,
+		DestDir:             dest,
+		BranchName:          branchName,
+		ReuseExistingBranch: reuseExisting,
 	})
 	if err != nil {
 		return err
