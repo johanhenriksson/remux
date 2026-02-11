@@ -62,6 +62,25 @@ hooks:
 			Expect(cfg.Hooks.OnDrop).To(Equal([]string{`echo "dropping"`}))
 		})
 
+		It("loads tabs configuration", func() {
+			content := `
+tabs:
+  - cmd: claude
+  - cmd: nvim .
+  - name: shell
+`
+			err := os.WriteFile(filepath.Join(tmpDir, ".remux.yaml"), []byte(content), 0644)
+			Expect(err).NotTo(HaveOccurred())
+
+			cfg, err := config.Load(tmpDir)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg).NotTo(BeNil())
+			Expect(cfg.Tabs).To(HaveLen(3))
+			Expect(cfg.Tabs[0]).To(Equal(config.Tab{Cmd: "claude"}))
+			Expect(cfg.Tabs[1]).To(Equal(config.Tab{Cmd: "nvim ."}))
+			Expect(cfg.Tabs[2]).To(Equal(config.Tab{Name: "shell"}))
+		})
+
 		It("returns error for invalid YAML", func() {
 			content := `env: [invalid`
 			err := os.WriteFile(filepath.Join(tmpDir, ".remux.yaml"), []byte(content), 0644)
@@ -153,10 +172,10 @@ hooks:
 		It("resolves template expressions", func() {
 			cfg := &config.Config{
 				Env: map[string]string{
-					"PORT":     "{{ space.Port }}",
+					"PORT":      "{{ space.Port }}",
 					"NEXT_PORT": "{{ space.Port + 1 }}",
-					"DB_NAME":  "app_{{ space.ID }}",
-					"STATIC":   "no_template",
+					"DB_NAME":   "app_{{ space.ID }}",
+					"STATIC":    "no_template",
 				},
 			}
 
@@ -190,6 +209,48 @@ hooks:
 			}
 
 			_, err := cfg.ResolveEnv(config.Space{})
+			Expect(err).To(HaveOccurred())
+		})
+	})
+
+	Describe("ResolveTabs", func() {
+		It("resolves template expressions in tabs", func() {
+			cfg := &config.Config{
+				Tabs: []config.Tab{
+					{Name: "editor", Cmd: "nvim ."},
+					{Name: "{{ space.Name }}", Cmd: "echo {{ space.Port }}"},
+					{Cmd: "shell"},
+				},
+			}
+
+			ctx := config.Space{
+				Name: "my-space",
+				Port: 11010,
+			}
+
+			tabs, err := cfg.ResolveTabs(ctx)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(tabs).To(HaveLen(3))
+			Expect(tabs[0]).To(Equal(config.Tab{Name: "editor", Cmd: "nvim ."}))
+			Expect(tabs[1]).To(Equal(config.Tab{Name: "my-space", Cmd: "echo 11010"}))
+			Expect(tabs[2]).To(Equal(config.Tab{Name: "", Cmd: "shell"}))
+		})
+
+		It("returns nil for empty tabs", func() {
+			cfg := &config.Config{}
+			tabs, err := cfg.ResolveTabs(config.Space{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(tabs).To(BeNil())
+		})
+
+		It("returns error for invalid expression", func() {
+			cfg := &config.Config{
+				Tabs: []config.Tab{
+					{Name: "{{ invalid.field }}"},
+				},
+			}
+
+			_, err := cfg.ResolveTabs(config.Space{})
 			Expect(err).To(HaveOccurred())
 		})
 	})

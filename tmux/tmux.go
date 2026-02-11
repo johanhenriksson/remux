@@ -81,3 +81,42 @@ func SessionName(name string) string {
 	return sanitizeName(name)
 }
 
+// NewWindow creates a new window in the given session.
+func NewWindow(session, workdir, name string) error {
+	args := []string{"new-window", "-t", sanitizeName(session), "-c", workdir}
+	if name != "" {
+		args = append(args, "-n", name)
+	}
+	return run(args...)
+}
+
+// SendKeys sends keys to a window in the given session.
+// If window is empty, the active window is targeted.
+func SendKeys(session, window, keys string) error {
+	target := sanitizeName(session)
+	if window != "" {
+		target += ":" + window
+	}
+	return run("send-keys", "-t", target, keys, "Enter")
+}
+
+// RenameWindow renames a window in the given session.
+// If target is empty, the active window is renamed.
+func RenameWindow(session, target, newName string) error {
+	t := sanitizeName(session)
+	if target != "" {
+		t += ":" + target
+	}
+	return run("rename-window", "-t", t, newName)
+}
+
+// SelectWindow selects a window in the given session.
+// If window is empty, the active window is targeted.
+func SelectWindow(session, window string) error {
+	target := sanitizeName(session)
+	if window != "" {
+		target += ":" + window
+	}
+	return run("select-window", "-t", target)
+}
+

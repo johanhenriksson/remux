@@ -11,10 +11,17 @@ import (
 
 const configFile = ".remux.yaml"
 
+// Tab represents a tmux window/tab configuration.
+type Tab struct {
+	Name string `yaml:"name"`
+	Cmd  string `yaml:"cmd"`
+}
+
 // Config represents a workspace configuration file.
 type Config struct {
 	Env   map[string]string `yaml:"env"`
 	Hooks Hooks             `yaml:"hooks"`
+	Tabs  []Tab             `yaml:"tabs"`
 }
 
 // Hooks contains lifecycle hook commands.
@@ -123,4 +130,25 @@ func (c *Config) RunOnDrop(space Space) error {
 		return fmt.Errorf("on_drop hook failed: %w", err)
 	}
 	return nil
+}
+
+// ResolveTabs evaluates template expressions in tab names and commands.
+func (c *Config) ResolveTabs(space Space) ([]Tab, error) {
+	if len(c.Tabs) == 0 {
+		return nil, nil
+	}
+
+	result := make([]Tab, len(c.Tabs))
+	for i, tab := range c.Tabs {
+		name, err := EvaluateTemplate(tab.Name, space)
+		if err != nil {
+			return nil, fmt.Errorf("tab %d name: %w", i, err)
+		}
+		cmd, err := EvaluateTemplate(tab.Cmd, space)
+		if err != nil {
+			return nil, fmt.Errorf("tab %d cmd: %w", i, err)
+		}
+		result[i] = Tab{Name: name, Cmd: cmd}
+	}
+	return result, nil
 }

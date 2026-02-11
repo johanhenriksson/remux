@@ -125,6 +125,23 @@ Configuration values support template expressions using `{{ }}` syntax:
 | `space.RepoRoot` | Associated repository root |
 | `env.*` | Environment variables |
 
+### Tabs
+
+Define tmux windows (tabs) that are automatically created when opening a workspace:
+
+```yaml
+tabs:
+  - name: editor
+    cmd: vim
+  - name: server
+    cmd: "npm start -- --port {{ space.Port }}"
+  - name: shell
+```
+
+Each tab becomes a tmux window in the session. The first tab reuses the default window; additional tabs create new windows. Tab names and commands support the same template expressions as env vars and hooks.
+
+If no tabs are configured, the session opens with a single default window.
+
 ### Hooks
 
 - `on_create` - Runs when workspace is created (non-blocking)

@@ -1,0 +1,4 @@
+tabs:
+  - cmd: vim .
+  - cmd: claude
+  - name: shell

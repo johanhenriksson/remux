@@ -79,3 +79,8 @@ func (s *Space) RunOnDrop() error {
 func (s *Space) ResolveEnv() (map[string]string, error) {
 	return s.config.ResolveEnv(s.configSpace())
 }
+
+// Tabs returns the resolved tab configurations for this space.
+func (s *Space) Tabs() ([]config.Tab, error) {
+	return s.config.ResolveTabs(s.configSpace())
+}

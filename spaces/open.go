@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"github.com/johanhenriksson/remux/config"
 	"github.com/johanhenriksson/remux/git"
 	"github.com/johanhenriksson/remux/tmux"
 )
@@ -71,12 +72,56 @@ func OpenSession(opts OpenSessionOptions) error {
 		return tmux.Attach(opts.Name)
 	}
 
-	if tmux.InSession() {
-		if err := tmux.NewSessionDetached(opts.Name, spacePath, opts.EnvVars); err != nil {
-			return err
-		}
-		return tmux.SwitchTo(opts.Name)
+	// Get configured tabs
+	tabs, err := space.Tabs()
+	if err != nil {
+		return fmt.Errorf("failed to resolve tabs: %w", err)
 	}
 
-	return tmux.NewSession(opts.Name, spacePath, opts.EnvVars)
+	// Create session detached so we can set up tabs before attaching
+	if err := tmux.NewSessionDetached(opts.Name, spacePath, opts.EnvVars); err != nil {
+		return err
+	}
+
+	// Set up tabs if configured
+	if len(tabs) > 0 {
+		if err := setupTabs(opts.Name, spacePath, tabs); err != nil {
+			return fmt.Errorf("failed to setup tabs: %w", err)
+		}
+	}
+
+	// Attach or switch to session
+	if tmux.InSession() {
+		return tmux.SwitchTo(opts.Name)
+	}
+	return tmux.Attach(opts.Name)
+}
+
+// setupTabs configures tmux windows based on tab configuration.
+func setupTabs(session, workdir string, tabs []config.Tab) error {
+	for i, tab := range tabs {
+		if i == 0 {
+			// First tab uses the default window (active after session creation)
+			if tab.Name != "" {
+				if err := tmux.RenameWindow(session, "", tab.Name); err != nil {
+					return err
+				}
+			}
+		} else {
+			// Create new windows for subsequent tabs
+			if err := tmux.NewWindow(session, workdir, tab.Name); err != nil {
+				return err
+			}
+		}
+
+		// Send command to the active window
+		if tab.Cmd != "" {
+			if err := tmux.SendKeys(session, "", tab.Cmd); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Select the first window
+	return tmux.SelectWindow(session, "{start}")
 }
