@@ -92,6 +92,72 @@ tabs:
 		})
 	})
 
+	Describe("Local config merge", func() {
+		It("merges env vars with local overriding base", func() {
+			base := "env:\n  FOO: base\n  BAR: base_only\n"
+			local := "env:\n  FOO: local\n  BAZ: local_only\n"
+			Expect(os.WriteFile(filepath.Join(tmpDir, ".remux.yaml"), []byte(base), 0644)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(tmpDir, ".remux.local.yaml"), []byte(local), 0644)).To(Succeed())
+
+			cfg, err := config.Load(tmpDir)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.Env).To(HaveKeyWithValue("FOO", "local"))
+			Expect(cfg.Env).To(HaveKeyWithValue("BAR", "base_only"))
+			Expect(cfg.Env).To(HaveKeyWithValue("BAZ", "local_only"))
+		})
+
+		It("replaces tabs when local defines them", func() {
+			base := "tabs:\n  - cmd: base-cmd\n"
+			local := "tabs:\n  - cmd: local-cmd\n  - cmd: local-cmd-2\n"
+			Expect(os.WriteFile(filepath.Join(tmpDir, ".remux.yaml"), []byte(base), 0644)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(tmpDir, ".remux.local.yaml"), []byte(local), 0644)).To(Succeed())
+
+			cfg, err := config.Load(tmpDir)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.Tabs).To(HaveLen(2))
+			Expect(cfg.Tabs[0].Cmd).To(Equal("local-cmd"))
+			Expect(cfg.Tabs[1].Cmd).To(Equal("local-cmd-2"))
+		})
+
+		It("replaces individual hook types while keeping others from base", func() {
+			base := "hooks:\n  on_create:\n    - base-create\n  on_open:\n    - base-open\n  on_drop:\n    - base-drop\n"
+			local := "hooks:\n  on_open:\n    - local-open\n"
+			Expect(os.WriteFile(filepath.Join(tmpDir, ".remux.yaml"), []byte(base), 0644)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(tmpDir, ".remux.local.yaml"), []byte(local), 0644)).To(Succeed())
+
+			cfg, err := config.Load(tmpDir)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.Hooks.OnCreate).To(Equal([]string{"base-create"}))
+			Expect(cfg.Hooks.OnOpen).To(Equal([]string{"local-open"}))
+			Expect(cfg.Hooks.OnDrop).To(Equal([]string{"base-drop"}))
+		})
+
+		It("has no effect when local config is missing", func() {
+			base := "env:\n  FOO: bar\ntabs:\n  - cmd: test\n"
+			Expect(os.WriteFile(filepath.Join(tmpDir, ".remux.yaml"), []byte(base), 0644)).To(Succeed())
+
+			cfg, err := config.Load(tmpDir)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.Env).To(HaveKeyWithValue("FOO", "bar"))
+			Expect(cfg.Tabs).To(HaveLen(1))
+		})
+
+		It("leaves base fields intact when local only sets some fields", func() {
+			base := "env:\n  FOO: bar\ntabs:\n  - cmd: base-cmd\nhooks:\n  on_create:\n    - base-create\n"
+			local := "env:\n  BAZ: local\n"
+			Expect(os.WriteFile(filepath.Join(tmpDir, ".remux.yaml"), []byte(base), 0644)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(tmpDir, ".remux.local.yaml"), []byte(local), 0644)).To(Succeed())
+
+			cfg, err := config.Load(tmpDir)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.Env).To(HaveKeyWithValue("FOO", "bar"))
+			Expect(cfg.Env).To(HaveKeyWithValue("BAZ", "local"))
+			Expect(cfg.Tabs).To(HaveLen(1))
+			Expect(cfg.Tabs[0].Cmd).To(Equal("base-cmd"))
+			Expect(cfg.Hooks.OnCreate).To(Equal([]string{"base-create"}))
+		})
+	})
+
 	Describe("Hooks", func() {
 		It("receives resolved env vars", func() {
 			outputFile := filepath.Join(tmpDir, "env_output.txt")

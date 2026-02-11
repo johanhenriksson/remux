@@ -10,6 +10,7 @@ import (
 )
 
 const configFile = ".remux.yaml"
+const localConfigFile = ".remux.local.yaml"
 
 // Tab represents a tmux window/tab configuration.
 type Tab struct {
@@ -53,12 +54,35 @@ func NewSpace(name, path string, port int, repoRoot string) Space {
 
 // Load reads a config file from the workspace directory.
 // Returns a default empty config if the file doesn't exist.
+// If a .remux.local.yaml file exists, it is merged on top of the base config.
 func Load(workspacePath string) (*Config, error) {
-	path := filepath.Join(workspacePath, configFile)
+	base, err := loadFile(filepath.Join(workspacePath, configFile))
+	if err != nil {
+		return nil, err
+	}
+	if base == nil {
+		base = &Config{}
+	}
+
+	local, err := loadFile(filepath.Join(workspacePath, localConfigFile))
+	if err != nil {
+		return nil, err
+	}
+
+	if local != nil {
+		base = merge(base, local)
+	}
+
+	return base, nil
+}
+
+// loadFile reads and parses a single YAML config file.
+// Returns nil (without error) if the file doesn't exist.
+func loadFile(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return &Config{}, nil
+			return nil, nil
 		}
 		return nil, err
 	}
@@ -68,6 +92,44 @@ func Load(workspacePath string) (*Config, error) {
 		return nil, err
 	}
 	return &cfg, nil
+}
+
+// merge returns a new Config combining base and override.
+// Env: maps are merged (override keys win, base-only keys preserved).
+// Tabs: replaced entirely if override defines any.
+// Hooks: replaced per hook type (on_create, on_open, on_drop are independent).
+func merge(base, override *Config) *Config {
+	result := *base
+
+	// Merge env maps
+	if len(override.Env) > 0 {
+		merged := make(map[string]string, len(base.Env)+len(override.Env))
+		for k, v := range base.Env {
+			merged[k] = v
+		}
+		for k, v := range override.Env {
+			merged[k] = v
+		}
+		result.Env = merged
+	}
+
+	// Replace tabs entirely
+	if len(override.Tabs) > 0 {
+		result.Tabs = override.Tabs
+	}
+
+	// Replace hooks per type
+	if len(override.Hooks.OnCreate) > 0 {
+		result.Hooks.OnCreate = override.Hooks.OnCreate
+	}
+	if len(override.Hooks.OnOpen) > 0 {
+		result.Hooks.OnOpen = override.Hooks.OnOpen
+	}
+	if len(override.Hooks.OnDrop) > 0 {
+		result.Hooks.OnDrop = override.Hooks.OnDrop
+	}
+
+	return &result
 }
 
 // ResolveEnv evaluates template expressions in env vars and returns resolved values.
