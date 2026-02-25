@@ -55,10 +55,19 @@ func Drop(worktreePath string, force bool) error {
 
 	// Unregister the space
 	destDir := filepath.Dir(worktreePath)
+	unlock, err := registry.Lock(destDir)
+	if err != nil {
+		return fmt.Errorf("failed to lock registry: %w", err)
+	}
+	defer unlock()
+
 	reg, err := registry.Load(destDir)
-	if err == nil {
-		reg.Remove(spaceName)
-		_ = reg.Save(destDir)
+	if err != nil {
+		return fmt.Errorf("failed to load registry: %w", err)
+	}
+	reg.Remove(spaceName)
+	if err := reg.Save(destDir); err != nil {
+		return fmt.Errorf("failed to save registry: %w", err)
 	}
 
 	return nil

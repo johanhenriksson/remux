@@ -1,8 +1,10 @@
 package registry
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"syscall"
 
 	"gopkg.in/yaml.v3"
 )
@@ -26,6 +28,24 @@ type Entry struct {
 // Registry holds a list of tracked spaces.
 type Registry struct {
 	Spaces []Entry `yaml:"spaces"`
+}
+
+// Lock acquires an exclusive file lock on the registry directory.
+// Returns an unlock function that must be called when done (typically via defer).
+func Lock(dir string) (unlock func(), err error) {
+	path := filepath.Join(dir, "spaces.lock")
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open lock file: %w", err)
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("failed to acquire lock: %w", err)
+	}
+	return func() {
+		syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		f.Close()
+	}, nil
 }
 
 // Load reads the space registry from the given directory.
