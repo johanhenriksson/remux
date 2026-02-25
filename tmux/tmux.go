@@ -13,6 +13,16 @@ func run(args ...string) error {
 	return cmd.Run()
 }
 
+// runOutput executes a tmux command and returns its stdout.
+func runOutput(args ...string) (string, error) {
+	cmd := exec.Command("tmux", args...)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 // runInteractive executes a tmux command with full I/O (for attaching).
 func runInteractive(args ...string) error {
 	cmd := exec.Command("tmux", args...)
@@ -118,5 +128,22 @@ func SelectWindow(session, window string) error {
 		target += ":" + window
 	}
 	return run("select-window", "-t", target)
+}
+
+// CurrentSession returns the name of the current tmux session.
+func CurrentSession() (string, error) {
+	return runOutput("display-message", "-p", "#S")
+}
+
+// ListSessions returns the names of all active tmux sessions.
+func ListSessions() ([]string, error) {
+	out, err := runOutput("list-sessions", "-F", "#S")
+	if err != nil {
+		return nil, err
+	}
+	if out == "" {
+		return nil, nil
+	}
+	return strings.Split(out, "\n"), nil
 }
 
