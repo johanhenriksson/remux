@@ -201,5 +201,19 @@ var _ = Describe("Tmux", func() {
 				tmux.KillSession("non-existent-session-12345")
 			})
 		})
+
+		Describe("ListSessions", func() {
+			It("includes a created session", func() {
+				workdir, err := os.Getwd()
+				Expect(err).NotTo(HaveOccurred())
+
+				err = tmux.NewSessionDetached(testSession, workdir, nil)
+				Expect(err).NotTo(HaveOccurred())
+
+				sessions, err := tmux.ListSessions()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(sessions).To(ContainElement(testSession))
+			})
+		})
 	})
 })
