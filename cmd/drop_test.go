@@ -49,7 +49,7 @@ var _ = Describe("Drop", func() {
 
 	Describe("spaces.Drop", func() {
 		It("removes a worktree successfully", func() {
-			err := spaces.Drop(worktreeDir)
+			err := spaces.Drop(worktreeDir, false)
 
 			Expect(err).NotTo(HaveOccurred())
 
@@ -62,7 +62,7 @@ var _ = Describe("Drop", func() {
 		})
 
 		It("returns an error when not in a worktree", func() {
-			err := spaces.Drop(mainRepoDir)
+			err := spaces.Drop(mainRepoDir, false)
 
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("not in a git worktree"))
@@ -73,7 +73,7 @@ var _ = Describe("Drop", func() {
 			err := os.WriteFile(testFile, []byte("uncommitted"), 0644)
 			Expect(err).NotTo(HaveOccurred())
 
-			err = spaces.Drop(worktreeDir)
+			err = spaces.Drop(worktreeDir, false)
 
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("uncommitted changes"))
@@ -87,7 +87,7 @@ var _ = Describe("Drop", func() {
 			Expect(err).NotTo(HaveOccurred())
 			defer os.RemoveAll(nonGitDir)
 
-			err = spaces.Drop(nonGitDir)
+			err = spaces.Drop(nonGitDir, false)
 
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("not in a git worktree"))
