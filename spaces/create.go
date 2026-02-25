@@ -51,10 +51,19 @@ func Create(opts CreateOptions) (string, error) {
 	}
 
 	// Register the new space
+	unlock, err := registry.Lock(opts.DestDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to lock registry: %w", err)
+	}
+	defer unlock()
+
 	reg, err := registry.Load(opts.DestDir)
-	if err == nil {
-		reg.Add(filepath.Base(worktreePath), worktreePath, reg.AllocatePort(), opts.RepoRoot)
-		_ = reg.Save(opts.DestDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to load registry: %w", err)
+	}
+	reg.Add(filepath.Base(worktreePath), worktreePath, reg.AllocatePort(), opts.RepoRoot)
+	if err := reg.Save(opts.DestDir); err != nil {
+		return "", fmt.Errorf("failed to save registry: %w", err)
 	}
 
 	// Run on_create hooks (warn on failure, don't abort)
