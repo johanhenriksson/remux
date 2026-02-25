@@ -29,7 +29,7 @@ var _ = Describe("Config", func() {
 
 	Describe("Load", func() {
 		It("returns empty config when config file doesn't exist", func() {
-			cfg, err := config.Load(tmpDir)
+			cfg, err := config.Load(tmpDir, tmpDir)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(cfg).NotTo(BeNil())
 			Expect(cfg.Env).To(BeNil())
@@ -52,7 +52,7 @@ hooks:
 			err := os.WriteFile(filepath.Join(tmpDir, ".remux.yaml"), []byte(content), 0644)
 			Expect(err).NotTo(HaveOccurred())
 
-			cfg, err := config.Load(tmpDir)
+			cfg, err := config.Load(tmpDir, tmpDir)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(cfg).NotTo(BeNil())
 			Expect(cfg.Env).To(HaveKeyWithValue("FOO", "bar"))
@@ -72,7 +72,7 @@ tabs:
 			err := os.WriteFile(filepath.Join(tmpDir, ".remux.yaml"), []byte(content), 0644)
 			Expect(err).NotTo(HaveOccurred())
 
-			cfg, err := config.Load(tmpDir)
+			cfg, err := config.Load(tmpDir, tmpDir)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(cfg).NotTo(BeNil())
 			Expect(cfg.Tabs).To(HaveLen(3))
@@ -86,7 +86,7 @@ tabs:
 			err := os.WriteFile(filepath.Join(tmpDir, ".remux.yaml"), []byte(content), 0644)
 			Expect(err).NotTo(HaveOccurred())
 
-			cfg, err := config.Load(tmpDir)
+			cfg, err := config.Load(tmpDir, tmpDir)
 			Expect(err).To(HaveOccurred())
 			Expect(cfg).To(BeNil())
 		})
@@ -99,7 +99,7 @@ tabs:
 			Expect(os.WriteFile(filepath.Join(tmpDir, ".remux.yaml"), []byte(base), 0644)).To(Succeed())
 			Expect(os.WriteFile(filepath.Join(tmpDir, ".remux.local.yaml"), []byte(local), 0644)).To(Succeed())
 
-			cfg, err := config.Load(tmpDir)
+			cfg, err := config.Load(tmpDir, tmpDir)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(cfg.Env).To(HaveKeyWithValue("FOO", "local"))
 			Expect(cfg.Env).To(HaveKeyWithValue("BAR", "base_only"))
@@ -112,7 +112,7 @@ tabs:
 			Expect(os.WriteFile(filepath.Join(tmpDir, ".remux.yaml"), []byte(base), 0644)).To(Succeed())
 			Expect(os.WriteFile(filepath.Join(tmpDir, ".remux.local.yaml"), []byte(local), 0644)).To(Succeed())
 
-			cfg, err := config.Load(tmpDir)
+			cfg, err := config.Load(tmpDir, tmpDir)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(cfg.Tabs).To(HaveLen(2))
 			Expect(cfg.Tabs[0].Cmd).To(Equal("local-cmd"))
@@ -125,7 +125,7 @@ tabs:
 			Expect(os.WriteFile(filepath.Join(tmpDir, ".remux.yaml"), []byte(base), 0644)).To(Succeed())
 			Expect(os.WriteFile(filepath.Join(tmpDir, ".remux.local.yaml"), []byte(local), 0644)).To(Succeed())
 
-			cfg, err := config.Load(tmpDir)
+			cfg, err := config.Load(tmpDir, tmpDir)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(cfg.Hooks.OnCreate).To(Equal([]string{"base-create"}))
 			Expect(cfg.Hooks.OnOpen).To(Equal([]string{"local-open"}))
@@ -136,7 +136,7 @@ tabs:
 			base := "env:\n  FOO: bar\ntabs:\n  - cmd: test\n"
 			Expect(os.WriteFile(filepath.Join(tmpDir, ".remux.yaml"), []byte(base), 0644)).To(Succeed())
 
-			cfg, err := config.Load(tmpDir)
+			cfg, err := config.Load(tmpDir, tmpDir)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(cfg.Env).To(HaveKeyWithValue("FOO", "bar"))
 			Expect(cfg.Tabs).To(HaveLen(1))
@@ -148,13 +148,50 @@ tabs:
 			Expect(os.WriteFile(filepath.Join(tmpDir, ".remux.yaml"), []byte(base), 0644)).To(Succeed())
 			Expect(os.WriteFile(filepath.Join(tmpDir, ".remux.local.yaml"), []byte(local), 0644)).To(Succeed())
 
-			cfg, err := config.Load(tmpDir)
+			cfg, err := config.Load(tmpDir, tmpDir)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(cfg.Env).To(HaveKeyWithValue("FOO", "bar"))
 			Expect(cfg.Env).To(HaveKeyWithValue("BAZ", "local"))
 			Expect(cfg.Tabs).To(HaveLen(1))
 			Expect(cfg.Tabs[0].Cmd).To(Equal("base-cmd"))
 			Expect(cfg.Hooks.OnCreate).To(Equal([]string{"base-create"}))
+		})
+
+		It("falls back to repo root for local config in worktrees", func() {
+			repoRoot, err := os.MkdirTemp("", "config-repo-root")
+			Expect(err).NotTo(HaveOccurred())
+			repoRoot, err = filepath.EvalSymlinks(repoRoot)
+			Expect(err).NotTo(HaveOccurred())
+			defer os.RemoveAll(repoRoot)
+
+			base := "env:\n  FOO: base\n"
+			local := "env:\n  FOO: from_root\n  BAR: root_only\n"
+			Expect(os.WriteFile(filepath.Join(tmpDir, ".remux.yaml"), []byte(base), 0644)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(repoRoot, ".remux.local.yaml"), []byte(local), 0644)).To(Succeed())
+
+			cfg, err := config.Load(tmpDir, repoRoot)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.Env).To(HaveKeyWithValue("FOO", "from_root"))
+			Expect(cfg.Env).To(HaveKeyWithValue("BAR", "root_only"))
+		})
+
+		It("prefers worktree local config over repo root", func() {
+			repoRoot, err := os.MkdirTemp("", "config-repo-root")
+			Expect(err).NotTo(HaveOccurred())
+			repoRoot, err = filepath.EvalSymlinks(repoRoot)
+			Expect(err).NotTo(HaveOccurred())
+			defer os.RemoveAll(repoRoot)
+
+			base := "env:\n  FOO: base\n"
+			worktreeLocal := "env:\n  FOO: from_worktree\n"
+			rootLocal := "env:\n  FOO: from_root\n"
+			Expect(os.WriteFile(filepath.Join(tmpDir, ".remux.yaml"), []byte(base), 0644)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(tmpDir, ".remux.local.yaml"), []byte(worktreeLocal), 0644)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(repoRoot, ".remux.local.yaml"), []byte(rootLocal), 0644)).To(Succeed())
+
+			cfg, err := config.Load(tmpDir, repoRoot)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.Env).To(HaveKeyWithValue("FOO", "from_worktree"))
 		})
 	})
 
