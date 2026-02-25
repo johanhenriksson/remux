@@ -100,15 +100,17 @@ func (r *Registry) Get(name string) *Entry {
 	return nil
 }
 
-// AllocatePort finds the next available port range.
+// AllocatePort finds the lowest available port range.
 func (r *Registry) AllocatePort() int {
-	maxPort := BasePort - PortRange
+	used := make(map[int]bool, len(r.Spaces))
 	for _, s := range r.Spaces {
-		if s.Port > maxPort {
-			maxPort = s.Port
+		used[s.Port] = true
+	}
+	for port := BasePort; ; port += PortRange {
+		if !used[port] {
+			return port
 		}
 	}
-	return maxPort + PortRange
 }
 
 // Remove removes a space by name.
