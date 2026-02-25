@@ -48,7 +48,7 @@ func AddWorktree(repoRoot, path, branch string) error {
 
 // RemoveWorktree removes a worktree.
 func RemoveWorktree(repoRoot, worktreePath string) error {
-	return run(repoRoot, "worktree", "remove", worktreePath)
+	return run(repoRoot, "worktree", "remove", "--force", worktreePath)
 }
 
 // IsWorktree checks if the given path is a git worktree (not the main repo).
