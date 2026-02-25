@@ -39,7 +39,7 @@ func Open(worktreePath string) (*Space, error) {
 		return nil, fmt.Errorf("space not found: %s", spaceName)
 	}
 
-	cfg, err := config.Load(worktreePath)
+	cfg, err := config.Load(worktreePath, entry.RepoRoot)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}

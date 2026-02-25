@@ -55,7 +55,9 @@ func NewSpace(name, path string, port int, repoRoot string) Space {
 // Load reads a config file from the workspace directory.
 // Returns a default empty config if the file doesn't exist.
 // If a .remux.local.yaml file exists, it is merged on top of the base config.
-func Load(workspacePath string) (*Config, error) {
+// When running in a worktree, repoRoot can differ from workspacePath;
+// the local config is looked up in workspacePath first, then repoRoot.
+func Load(workspacePath, repoRoot string) (*Config, error) {
 	base, err := loadFile(filepath.Join(workspacePath, configFile))
 	if err != nil {
 		return nil, err
@@ -67,6 +69,12 @@ func Load(workspacePath string) (*Config, error) {
 	local, err := loadFile(filepath.Join(workspacePath, localConfigFile))
 	if err != nil {
 		return nil, err
+	}
+	if local == nil && repoRoot != workspacePath {
+		local, err = loadFile(filepath.Join(repoRoot, localConfigFile))
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if local != nil {
