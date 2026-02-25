@@ -52,7 +52,15 @@ var _ = Describe("Registry", func() {
 		It("handles non-sequential ports", func() {
 			reg.Add("space1", "/path/1", 11010, "/repo/root")
 			reg.Add("space2", "/path/2", 11050, "/repo/root") // gap
-			Expect(reg.AllocatePort()).To(Equal(11060))
+			Expect(reg.AllocatePort()).To(Equal(11020))
+		})
+
+		It("reuses gaps from removed spaces", func() {
+			reg.Add("space1", "/path/1", 11010, "/repo/root")
+			reg.Add("space2", "/path/2", 11020, "/repo/root")
+			reg.Add("space3", "/path/3", 11030, "/repo/root")
+			reg.Remove("space2")
+			Expect(reg.AllocatePort()).To(Equal(11020))
 		})
 	})
 
