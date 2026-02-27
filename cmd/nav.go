@@ -32,10 +32,6 @@ func init() {
 // active remux session. direction should be +1 or -1.
 func runNav(direction int) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
-		if !tmux.InSession() {
-			return fmt.Errorf("not inside a tmux session")
-		}
-
 		dest, err := getDestDir()
 		if err != nil {
 			return err
@@ -49,6 +45,15 @@ func runNav(direction int) func(*cobra.Command, []string) error {
 		if len(targets) == 0 {
 			fmt.Println("No active remux sessions")
 			return nil
+		}
+
+		if !tmux.InSession() {
+			// Outside tmux: attach to first (next) or last (prev) session
+			target := targets[0]
+			if direction < 0 {
+				target = targets[len(targets)-1]
+			}
+			return tmux.Attach(target)
 		}
 
 		if len(targets) == 1 {
