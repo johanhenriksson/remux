@@ -45,6 +45,7 @@ func Lock(dir string) (unlock func(), err error) {
 	return func() {
 		syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
 		f.Close()
+		os.Remove(path)
 	}, nil
 }
 
