@@ -16,6 +16,7 @@ type OpenSessionOptions struct {
 	DestDir string            // Worktree directory
 	Name    string            // Name of the space to open
 	EnvVars map[string]string // Session-level environment variables (optional)
+	Detach  bool              // Create session without attaching
 }
 
 // OpenSession opens a tmux session in the specified space.
@@ -88,6 +89,10 @@ func OpenSession(opts OpenSessionOptions) error {
 		if err := setupTabs(opts.Name, spacePath, tabs); err != nil {
 			return fmt.Errorf("failed to setup tabs: %w", err)
 		}
+	}
+
+	if opts.Detach {
+		return nil
 	}
 
 	// Attach or switch to session
