@@ -14,8 +14,11 @@ const localConfigFile = ".remux.local.yaml"
 
 // Tab represents a tmux window/tab configuration.
 type Tab struct {
-	Name string `yaml:"name"`
-	Cmd  string `yaml:"cmd"`
+	Name    string `yaml:"name"`
+	Cmd     string `yaml:"cmd"`
+	Prompt  string `yaml:"prompt"`
+	Await   string `yaml:"await"`
+	Timeout int    `yaml:"timeout"` // seconds, 0 = default (60s)
 }
 
 // Config represents a workspace configuration file.
@@ -39,6 +42,7 @@ type Space struct {
 	Port     int
 	ID       string
 	RepoRoot string
+	Prompt   string
 }
 
 // NewSpace creates a Space from the given values, computing the ID automatically.
@@ -218,7 +222,21 @@ func (c *Config) ResolveTabs(space Space) ([]Tab, error) {
 		if err != nil {
 			return nil, fmt.Errorf("tab %d cmd: %w", i, err)
 		}
-		result[i] = Tab{Name: name, Cmd: cmd}
+		prompt, err := EvaluateTemplate(tab.Prompt, space)
+		if err != nil {
+			return nil, fmt.Errorf("tab %d prompt: %w", i, err)
+		}
+		await, err := EvaluateTemplate(tab.Await, space)
+		if err != nil {
+			return nil, fmt.Errorf("tab %d await: %w", i, err)
+		}
+		result[i] = Tab{
+			Name:    name,
+			Cmd:     cmd,
+			Prompt:  prompt,
+			Await:   await,
+			Timeout: tab.Timeout,
+		}
 	}
 	return result, nil
 }

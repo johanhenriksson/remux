@@ -15,6 +15,7 @@ import (
 
 var pathDir string
 var detachFlag bool
+var promptFlag string
 
 var newCmd = &cobra.Command{
 	Use:   "new <name>",
@@ -44,7 +45,9 @@ func init() {
 
 	newCmd.Flags().StringVar(&pathDir, "path", "", "destination directory for worktrees (default: ~/.remux)")
 	newCmd.Flags().BoolVarP(&detachFlag, "detach", "d", false, "create workspace without attaching to the session")
+	newCmd.Flags().StringVarP(&promptFlag, "prompt", "p", "", "prompt string for tab templates")
 	openCmd.Flags().StringVar(&pathDir, "path", "", "worktree directory (default: ~/.remux)")
+	openCmd.Flags().StringVarP(&promptFlag, "prompt", "p", "", "prompt string for tab templates")
 }
 
 func getPath() (string, error) {
@@ -123,6 +126,7 @@ func runNew(cmd *cobra.Command, args []string) error {
 	return spaces.OpenSession(spaces.OpenSessionOptions{
 		DestDir: dest,
 		Name:    filepath.Base(worktreePath),
+		Prompt:  promptFlag,
 		Detach:  detachFlag,
 	})
 }
@@ -144,6 +148,7 @@ func runOpen(cmd *cobra.Command, args []string) error {
 	return spaces.OpenSession(spaces.OpenSessionOptions{
 		DestDir: dest,
 		Name:    spaceName,
+		Prompt:  promptFlag,
 	})
 }
 
