@@ -1,4 +1,6 @@
 tabs:
-  - cmd: vim .
   - cmd: claude
+    prompt: "{{ prompt }}"
+    await: "❯"
+  - cmd: nvim .
   - name: shell

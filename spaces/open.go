@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/johanhenriksson/remux/config"
 	"github.com/johanhenriksson/remux/git"
@@ -15,6 +17,7 @@ import (
 type OpenSessionOptions struct {
 	DestDir string            // Worktree directory
 	Name    string            // Name of the space to open
+	Prompt  string            // Prompt string for tab template evaluation
 	EnvVars map[string]string // Session-level environment variables (optional)
 	Detach  bool              // Create session without attaching
 }
@@ -74,7 +77,7 @@ func OpenSession(opts OpenSessionOptions) error {
 	}
 
 	// Get configured tabs
-	tabs, err := space.Tabs()
+	tabs, err := space.Tabs(opts.Prompt)
 	if err != nil {
 		return fmt.Errorf("failed to resolve tabs: %w", err)
 	}
@@ -122,6 +125,26 @@ func setupTabs(session, workdir string, tabs []config.Tab) error {
 		// Send command to the active window
 		if tab.Cmd != "" {
 			if err := tmux.SendKeys(session, "", tab.Cmd); err != nil {
+				return err
+			}
+		}
+
+		// Handle prompt/await
+		prompt := strings.TrimSpace(tab.Prompt)
+		if prompt != "" {
+			if tab.Await != "" {
+				timeout := time.Duration(tab.Timeout) * time.Second
+				if timeout == 0 {
+					timeout = 60 * time.Second
+				}
+				fmt.Printf("waiting for %q in tab %q...\n", tab.Await, tab.Name)
+				if err := tmux.AwaitText(session, "", tab.Await, timeout); err != nil {
+					return fmt.Errorf("tab %q: %w", tab.Name, err)
+				}
+			}
+			// Give TUI time to become interactive after awaited text appears
+			time.Sleep(100 * time.Millisecond)
+			if err := tmux.SendText(session, "", prompt); err != nil {
 				return err
 			}
 		}
