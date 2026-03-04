@@ -4,10 +4,24 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 
 	"github.com/johanhenriksson/remux/git"
 	"github.com/johanhenriksson/remux/registry"
 )
+
+var nonSlugChars = regexp.MustCompile(`[^a-zA-Z0-9-]+`)
+var repeatedHyphens = regexp.MustCompile(`-{2,}`)
+
+// SlugifyBranch converts a git branch name into a flat, filesystem-safe slug.
+// Non-alphanumeric characters (except hyphens) are replaced with hyphens,
+// repeated hyphens are collapsed, and leading/trailing hyphens are trimmed.
+func SlugifyBranch(branch string) string {
+	s := nonSlugChars.ReplaceAllString(branch, "-")
+	s = repeatedHyphens.ReplaceAllString(s, "-")
+	return strings.Trim(s, "-")
+}
 
 // CreateOptions contains the parameters for creating a new space.
 type CreateOptions struct {
@@ -23,7 +37,8 @@ type CreateOptions struct {
 // Returns the worktree path on success.
 func Create(opts CreateOptions) (string, error) {
 	repoName := filepath.Base(opts.RepoRoot)
-	worktreePath := filepath.Join(opts.DestDir, fmt.Sprintf("%s-%s", repoName, opts.BranchName))
+	spaceName := fmt.Sprintf("%s-%s", repoName, SlugifyBranch(opts.BranchName))
+	worktreePath := filepath.Join(opts.DestDir, spaceName)
 
 	if _, err := os.Stat(worktreePath); err == nil {
 		return "", fmt.Errorf("worktree directory already exists: %s", worktreePath)
@@ -61,7 +76,7 @@ func Create(opts CreateOptions) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to load registry: %w", err)
 	}
-	reg.Add(filepath.Base(worktreePath), worktreePath, reg.AllocatePort(), opts.RepoRoot)
+	reg.Add(filepath.Base(worktreePath), opts.BranchName, worktreePath, reg.AllocatePort(), opts.RepoRoot)
 	if err := reg.Save(opts.DestDir); err != nil {
 		return "", fmt.Errorf("failed to save registry: %w", err)
 	}

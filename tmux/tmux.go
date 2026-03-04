@@ -38,6 +38,7 @@ func runInteractive(args ...string) error {
 func sanitizeName(name string) string {
 	name = strings.ReplaceAll(name, ".", "_")
 	name = strings.ReplaceAll(name, ":", "_")
+	name = strings.ReplaceAll(name, "/", "-")
 	return name
 }
 

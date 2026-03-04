@@ -142,7 +142,7 @@ func runOpen(cmd *cobra.Command, args []string) error {
 	// If in a git repo, prefix the repo name
 	if repoRoot, err := git.FindRoot(); err == nil {
 		repoName := filepath.Base(repoRoot)
-		spaceName = fmt.Sprintf("%s-%s", repoName, spaceName)
+		spaceName = fmt.Sprintf("%s-%s", repoName, spaces.SlugifyBranch(spaceName))
 	}
 
 	return spaces.OpenSession(spaces.OpenSessionOptions{
@@ -170,7 +170,11 @@ func runList(cmd *cobra.Command, args []string) error {
 	}
 
 	for _, e := range entries {
-		fmt.Printf("%s\t%s\n", e.Name, e.Path)
+		if e.Branch != "" {
+			fmt.Printf("%s\t%s\t%s\n", e.Name, e.Branch, e.Path)
+		} else {
+			fmt.Printf("%s\t%s\n", e.Name, e.Path)
+		}
 	}
 	return nil
 }

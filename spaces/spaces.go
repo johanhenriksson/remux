@@ -18,9 +18,10 @@ type Space struct {
 	config   *config.Config
 }
 
-// ID returns a sanitized identifier for the space (hyphens replaced with underscores).
+// ID returns a sanitized identifier for the space (slashes and hyphens replaced with underscores).
 func (s *Space) ID() string {
-	return strings.ReplaceAll(s.Name, "-", "_")
+	id := strings.ReplaceAll(s.Name, "/", "_")
+	return strings.ReplaceAll(id, "-", "_")
 }
 
 // Open loads a space from the given worktree path.

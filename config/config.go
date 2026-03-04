@@ -47,11 +47,13 @@ type Space struct {
 
 // NewSpace creates a Space from the given values, computing the ID automatically.
 func NewSpace(name, path string, port int, repoRoot string) Space {
+	id := strings.ReplaceAll(name, "/", "_")
+	id = strings.ReplaceAll(id, "-", "_")
 	return Space{
 		Name:     name,
 		Path:     path,
 		Port:     port,
-		ID:       strings.ReplaceAll(name, "-", "_"),
+		ID:       id,
 		RepoRoot: repoRoot,
 	}
 }

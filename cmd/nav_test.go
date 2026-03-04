@@ -24,9 +24,9 @@ func TestActiveRemuxSessions(t *testing.T) {
 
 	// Create a registry with two entries
 	reg := &registry.Registry{}
-	reg.Add("space-a", filepath.Join(dir, "a"), 11010, dir)
-	reg.Add("space-b", filepath.Join(dir, "b"), 11020, dir)
-	reg.Add("space-c", filepath.Join(dir, "c"), 11030, dir)
+	reg.Add("space-a", "", filepath.Join(dir, "a"), 11010, dir)
+	reg.Add("space-b", "", filepath.Join(dir, "b"), 11020, dir)
+	reg.Add("space-c", "", filepath.Join(dir, "c"), 11030, dir)
 	if err := reg.Save(dir); err != nil {
 		t.Fatal(err)
 	}

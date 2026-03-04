@@ -114,6 +114,37 @@ var _ = Describe("Create", func() {
 		Expect(err.Error()).To(ContainSubstring("worktree directory already exists"))
 	})
 
+	It("creates a flat directory for branch names with slashes", func() {
+		opts := spaces.CreateOptions{
+			RepoRoot:   testRepoDir,
+			DestDir:    destDir,
+			BranchName: "feat/my-feature",
+		}
+
+		worktreePath, err := spaces.Create(opts)
+
+		Expect(err).NotTo(HaveOccurred())
+		expectedPath := filepath.Join(destDir, filepath.Base(testRepoDir)+"-feat-my-feature")
+		Expect(worktreePath).To(Equal(expectedPath))
+
+		// Verify it's a flat directory, not nested
+		_, err = os.Stat(worktreePath)
+		Expect(err).NotTo(HaveOccurred())
+
+		// Verify the git branch has the original slash name
+		gitCmd := exec.Command("git", "-C", testRepoDir, "show-ref", "--verify", "refs/heads/feat/my-feature")
+		err = gitCmd.Run()
+		Expect(err).NotTo(HaveOccurred())
+
+		// Verify registry entry stores original branch name
+		reg, err := registry.Load(destDir)
+		Expect(err).NotTo(HaveOccurred())
+		entry := reg.Get(filepath.Base(worktreePath))
+		Expect(entry).NotTo(BeNil())
+		Expect(entry.Branch).To(Equal("feat/my-feature"))
+		Expect(entry.Name).To(Equal(filepath.Base(testRepoDir) + "-feat-my-feature"))
+	})
+
 	It("returns an error when not in a git repository", func() {
 		nonGitDir, err := os.MkdirTemp("", "non-git-*")
 		Expect(err).NotTo(HaveOccurred())
@@ -129,6 +160,33 @@ var _ = Describe("Create", func() {
 
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("failed to create branch"))
+	})
+})
+
+var _ = Describe("SlugifyBranch", func() {
+	It("replaces slashes with hyphens", func() {
+		Expect(spaces.SlugifyBranch("feat/my-feature")).To(Equal("feat-my-feature"))
+	})
+
+	It("replaces dots with hyphens", func() {
+		Expect(spaces.SlugifyBranch("release/1.2.3")).To(Equal("release-1-2-3"))
+	})
+
+	It("strips non-alphanumeric characters", func() {
+		Expect(spaces.SlugifyBranch("branch@{0}")).To(Equal("branch-0"))
+	})
+
+	It("collapses repeated hyphens", func() {
+		Expect(spaces.SlugifyBranch("feat//double")).To(Equal("feat-double"))
+	})
+
+	It("trims leading and trailing hyphens", func() {
+		Expect(spaces.SlugifyBranch("/leading")).To(Equal("leading"))
+		Expect(spaces.SlugifyBranch("trailing/")).To(Equal("trailing"))
+	})
+
+	It("leaves simple names unchanged", func() {
+		Expect(spaces.SlugifyBranch("my-branch")).To(Equal("my-branch"))
 	})
 })
 
