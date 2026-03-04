@@ -1,9 +1,11 @@
 package tmux
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // run executes a tmux command without interactive I/O.
@@ -110,6 +112,22 @@ func SendKeys(session, window, keys string) error {
 	return run("send-keys", "-t", target, keys, "Enter")
 }
 
+// SendText sends literal text to a window and presses Enter to submit it.
+// Unlike SendKeys, the text is sent with -l to prevent key name interpretation,
+// and Enter is sent as a separate key event.
+func SendText(session, window, text string) error {
+	target := sanitizeName(session)
+	if window != "" {
+		target += ":" + window
+	}
+	if err := run("send-keys", "-t", target, "-l", text); err != nil {
+		return err
+	}
+	// Wait for TUI to process the text before submitting
+	time.Sleep(100 * time.Millisecond)
+	return run("send-keys", "-t", target, "Enter")
+}
+
 // RenameWindow renames a window in the given session.
 // If target is empty, the active window is renamed.
 func RenameWindow(session, target, newName string) error {
@@ -145,5 +163,32 @@ func ListSessions() ([]string, error) {
 		return nil, nil
 	}
 	return strings.Split(out, "\n"), nil
+}
+
+// CapturePane captures the visible contents of a tmux pane.
+func CapturePane(session, window string) (string, error) {
+	target := sanitizeName(session)
+	if window != "" {
+		target += ":" + window
+	}
+	return runOutput("capture-pane", "-t", target, "-p")
+}
+
+// AwaitText polls a tmux pane until the given text appears or the timeout expires.
+func AwaitText(session, window, text string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		content, err := CapturePane(session, window)
+		if err != nil {
+			return fmt.Errorf("capture pane: %w", err)
+		}
+		if strings.Contains(content, text) {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timeout waiting for %q after %s", text, timeout)
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
 }
 

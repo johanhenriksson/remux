@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -34,5 +35,25 @@ func runDrop(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("Removed space: %s\n", filepath.Base(cwd))
+
+	// Offer to attach to another session if any remain
+	dest, err := getPath()
+	if err != nil {
+		return nil
+	}
+	targets, err := activeRemuxSessions(dest)
+	if err != nil || len(targets) == 0 {
+		return nil
+	}
+
+	target := targets[len(targets)-1]
+	fmt.Printf("Attach to %s? [Enter/Esc] ", target)
+
+	reader := bufio.NewReader(os.Stdin)
+	line, _ := reader.ReadString('\n')
+	if line == "\n" {
+		return navigate(-1)
+	}
+
 	return nil
 }

@@ -21,7 +21,8 @@ func EvaluateTemplate(input string, space Space) (string, error) {
 			"ID":       space.ID,
 			"RepoRoot": space.RepoRoot,
 		},
-		"env": getEnvMap(),
+		"prompt": space.Prompt,
+		"env":    getEnvMap(),
 	}
 
 	var evalErr error
