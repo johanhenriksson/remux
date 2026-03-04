@@ -116,6 +116,16 @@ func (r *Registry) AllocatePort() int {
 	}
 }
 
+// GetByBranch returns a pointer to the entry with the given branch name, or nil if not found.
+func (r *Registry) GetByBranch(branch string) *Entry {
+	for i, s := range r.Spaces {
+		if s.Branch == branch {
+			return &r.Spaces[i]
+		}
+	}
+	return nil
+}
+
 // Remove removes a space by name.
 func (r *Registry) Remove(name string) {
 	for i, s := range r.Spaces {
