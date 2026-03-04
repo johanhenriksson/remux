@@ -6,10 +6,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/johanhenriksson/remux/git"
 	"github.com/johanhenriksson/remux/registry"
 	"github.com/johanhenriksson/remux/spaces"
+	"github.com/johanhenriksson/remux/tmux"
 	"github.com/spf13/cobra"
 )
 
@@ -169,12 +171,19 @@ func runList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
+	fmt.Fprintln(w, "NAME\tBRANCH\tPORT\tSTATUS\tPATH")
 	for _, e := range entries {
-		if e.Branch != "" {
-			fmt.Printf("%s\t%s\t%s\n", e.Name, e.Branch, e.Path)
-		} else {
-			fmt.Printf("%s\t%s\n", e.Name, e.Path)
+		branch := e.Branch
+		if branch == "" {
+			branch = "-"
 		}
+		status := "-"
+		if tmux.SessionExists(e.Name) {
+			status = "active"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%s\n", e.Name, branch, e.Port, status, e.Path)
 	}
+	w.Flush()
 	return nil
 }
