@@ -13,7 +13,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var destDir string
+var pathDir string
+var detachFlag bool
 
 var newCmd = &cobra.Command{
 	Use:   "new <name>",
@@ -41,12 +42,13 @@ func init() {
 	rootCmd.AddCommand(openCmd)
 	rootCmd.AddCommand(listCmd)
 
-	newCmd.Flags().StringVarP(&destDir, "dest", "d", "", "destination directory for worktrees (default: ~/.remux)")
-	openCmd.Flags().StringVarP(&destDir, "dest", "d", "", "worktree directory (default: ~/.remux)")
+	newCmd.Flags().StringVar(&pathDir, "path", "", "destination directory for worktrees (default: ~/.remux)")
+	newCmd.Flags().BoolVarP(&detachFlag, "detach", "d", false, "create workspace without attaching to the session")
+	openCmd.Flags().StringVar(&pathDir, "path", "", "worktree directory (default: ~/.remux)")
 }
 
-func getDestDir() (string, error) {
-	return resolveDestDir(destDir)
+func getPath() (string, error) {
+	return resolveDestDir(pathDir)
 }
 
 // resolveDestDir resolves the destination directory, expanding ~ and making it absolute.
@@ -95,7 +97,7 @@ func runNew(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	dest, err := getDestDir()
+	dest, err := getPath()
 	if err != nil {
 		return err
 	}
@@ -121,13 +123,14 @@ func runNew(cmd *cobra.Command, args []string) error {
 	return spaces.OpenSession(spaces.OpenSessionOptions{
 		DestDir: dest,
 		Name:    filepath.Base(worktreePath),
+		Detach:  detachFlag,
 	})
 }
 
 func runOpen(cmd *cobra.Command, args []string) error {
 	spaceName := args[0]
 
-	dest, err := getDestDir()
+	dest, err := getPath()
 	if err != nil {
 		return err
 	}
@@ -145,7 +148,7 @@ func runOpen(cmd *cobra.Command, args []string) error {
 }
 
 func runList(cmd *cobra.Command, args []string) error {
-	dest, err := getDestDir()
+	dest, err := getPath()
 	if err != nil {
 		return err
 	}

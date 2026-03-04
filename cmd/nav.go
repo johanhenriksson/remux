@@ -32,7 +32,7 @@ func init() {
 // active remux session. direction should be +1 or -1.
 func runNav(direction int) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
-		dest, err := getDestDir()
+		dest, err := getPath()
 		if err != nil {
 			return err
 		}
