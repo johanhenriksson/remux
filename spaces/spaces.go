@@ -81,6 +81,8 @@ func (s *Space) ResolveEnv() (map[string]string, error) {
 }
 
 // Tabs returns the resolved tab configurations for this space.
-func (s *Space) Tabs() ([]config.Tab, error) {
-	return s.config.ResolveTabs(s.configSpace())
+func (s *Space) Tabs(prompt string) ([]config.Tab, error) {
+	cs := s.configSpace()
+	cs.Prompt = prompt
+	return s.config.ResolveTabs(cs)
 }
