@@ -100,6 +100,10 @@ var _ = Describe("Tmux", func() {
 			Expect(tmux.SessionName("repo.name:branch")).To(Equal("repo_name_branch"))
 		})
 
+		It("replaces slashes with hyphens", func() {
+			Expect(tmux.SessionName("repo-feat/my-feature")).To(Equal("repo-feat-my-feature"))
+		})
+
 		It("leaves valid names unchanged", func() {
 			Expect(tmux.SessionName("my-workspace")).To(Equal("my-workspace"))
 		})

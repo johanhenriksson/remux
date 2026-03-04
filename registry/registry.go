@@ -20,6 +20,7 @@ const (
 // Entry represents a tracked space in the registry.
 type Entry struct {
 	Name     string `yaml:"name"`
+	Branch   string `yaml:"branch,omitempty"`
 	Path     string `yaml:"path"`
 	Port     int    `yaml:"port"`
 	RepoRoot string `yaml:"repo_root"`
@@ -79,16 +80,17 @@ func (r *Registry) Save(dir string) error {
 }
 
 // Add adds a space to the registry. Idempotent - updates path if name exists.
-func (r *Registry) Add(name, path string, port int, repoRoot string) {
+func (r *Registry) Add(name, branch, path string, port int, repoRoot string) {
 	for i, s := range r.Spaces {
 		if s.Name == name {
+			r.Spaces[i].Branch = branch
 			r.Spaces[i].Path = path
 			r.Spaces[i].Port = port
 			r.Spaces[i].RepoRoot = repoRoot
 			return
 		}
 	}
-	r.Spaces = append(r.Spaces, Entry{Name: name, Path: path, Port: port, RepoRoot: repoRoot})
+	r.Spaces = append(r.Spaces, Entry{Name: name, Branch: branch, Path: path, Port: port, RepoRoot: repoRoot})
 }
 
 // Get returns a pointer to the entry with the given name, or nil if not found.
