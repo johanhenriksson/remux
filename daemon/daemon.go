@@ -80,9 +80,19 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 	}
 }
 
+func (o *Orchestrator) issueFilter(states []string) IssueFilter {
+	cfg := o.workflow.Config.Tracker
+	return IssueFilter{
+		ProjectSlug:   cfg.ProjectSlug,
+		States:        states,
+		Labels:        cfg.Labels,
+		AssigneeEmail: cfg.AssigneeEmail,
+	}
+}
+
 func (o *Orchestrator) startupCleanup() {
 	cfg := o.workflow.Config.Tracker
-	issues, err := o.linear.FetchByStates(cfg.ProjectSlug, cfg.TerminalStates)
+	issues, err := o.linear.FetchIssues(o.issueFilter(cfg.TerminalStates))
 	if err != nil {
 		log.Printf("startup cleanup: fetch terminal issues: %v", err)
 		return
@@ -116,7 +126,7 @@ func (o *Orchestrator) tick(ctx context.Context) {
 
 	// Fetch candidates
 	cfg := o.workflow.Config.Tracker
-	candidates, err := o.linear.FetchCandidates(cfg.ProjectSlug, cfg.ActiveStates)
+	candidates, err := o.linear.FetchIssues(o.issueFilter(cfg.ActiveStates))
 	if err != nil {
 		log.Printf("fetch candidates: %v", err)
 		return
@@ -298,7 +308,7 @@ func (o *Orchestrator) handleRetry(ctx context.Context, issueID string) {
 
 	// Check if issue is still eligible
 	cfg := o.workflow.Config.Tracker
-	candidates, err := o.linear.FetchCandidates(cfg.ProjectSlug, cfg.ActiveStates)
+	candidates, err := o.linear.FetchIssues(o.issueFilter(cfg.ActiveStates))
 	if err != nil {
 		log.Printf("[%s] retry fetch: %v", retry.Identifier, err)
 		// Re-schedule with incremented attempt
