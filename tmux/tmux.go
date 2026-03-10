@@ -79,6 +79,12 @@ func KillSession(name string) {
 	run("kill-session", "-t", sanitizeName(name))
 }
 
+// KillWindow kills a specific window in a tmux session.
+func KillWindow(session, window string) error {
+	target := sanitizeName(session) + ":" + window
+	return run("kill-window", "-t", target)
+}
+
 // SwitchTo switches to an existing tmux session (from within tmux).
 func SwitchTo(name string) error {
 	return run("switch-client", "-t", sanitizeName(name))

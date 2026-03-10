@@ -1,0 +1,210 @@
+package daemon
+
+import (
+	"bytes"
+	"fmt"
+	"os"
+	"strings"
+	"text/template"
+	"time"
+
+	"gopkg.in/yaml.v3"
+)
+
+// WorkflowConfig holds typed configuration extracted from WORKFLOW.md front matter.
+type WorkflowConfig struct {
+	Tracker  TrackerConfig
+	Polling  PollingConfig
+	Agent    AgentConfig
+}
+
+type TrackerConfig struct {
+	Kind           string
+	APIKey         string
+	Endpoint       string
+	ProjectSlug    string
+	ActiveStates   []string
+	TerminalStates []string
+}
+
+type PollingConfig struct {
+	Interval time.Duration
+}
+
+type AgentConfig struct {
+	Command         string
+	MaxConcurrent   int
+	MaxRetryBackoff time.Duration
+}
+
+// Workflow represents a parsed WORKFLOW.md file.
+type Workflow struct {
+	Config   WorkflowConfig
+	template *template.Template
+}
+
+// LoadWorkflow parses a WORKFLOW.md file, extracting YAML front matter and the prompt template.
+func LoadWorkflow(path string) (*Workflow, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read workflow file: %w", err)
+	}
+
+	frontMatter, promptBody, err := splitFrontMatter(string(data))
+	if err != nil {
+		return nil, err
+	}
+
+	cfg, err := parseConfig(frontMatter)
+	if err != nil {
+		return nil, err
+	}
+
+	tmpl, err := template.New("prompt").Option("missingkey=error").Parse(promptBody)
+	if err != nil {
+		return nil, fmt.Errorf("parse prompt template: %w", err)
+	}
+
+	return &Workflow{Config: cfg, template: tmpl}, nil
+}
+
+// RenderPrompt renders the prompt template with the given issue and attempt number.
+func (w *Workflow) RenderPrompt(issue Issue, attempt *int) (string, error) {
+	data := map[string]any{
+		"ID":          issue.ID,
+		"Identifier":  issue.Identifier,
+		"Title":       issue.Title,
+		"Description": issue.Description,
+		"Priority":    issue.Priority,
+		"State":       issue.State,
+		"BranchName":  issue.BranchName,
+		"URL":         issue.URL,
+		"Labels":      issue.Labels,
+		"Attempt":     attempt,
+	}
+
+	var buf bytes.Buffer
+	if err := w.template.Execute(&buf, data); err != nil {
+		return "", fmt.Errorf("render prompt: %w", err)
+	}
+	return buf.String(), nil
+}
+
+func splitFrontMatter(content string) (map[string]any, string, error) {
+	if !strings.HasPrefix(content, "---\n") {
+		return nil, "", fmt.Errorf("workflow file must start with YAML front matter (---)")
+	}
+
+	rest := content[4:]
+	idx := strings.Index(rest, "\n---\n")
+	if idx < 0 {
+		return nil, "", fmt.Errorf("unterminated YAML front matter")
+	}
+
+	var fm map[string]any
+	if err := yaml.Unmarshal([]byte(rest[:idx]), &fm); err != nil {
+		return nil, "", fmt.Errorf("parse front matter YAML: %w", err)
+	}
+
+	promptBody := strings.TrimSpace(rest[idx+5:])
+	return fm, promptBody, nil
+}
+
+func parseConfig(fm map[string]any) (WorkflowConfig, error) {
+	cfg := WorkflowConfig{
+		Tracker: TrackerConfig{
+			Kind:           "linear",
+			Endpoint:       "https://api.linear.app/graphql",
+			ActiveStates:   []string{"Todo", "In Progress"},
+			TerminalStates: []string{"Done", "Cancelled", "Closed", "Canceled", "Duplicate"},
+		},
+		Polling: PollingConfig{
+			Interval: 30 * time.Second,
+		},
+		Agent: AgentConfig{
+			Command:         "claude --dangerously-skip-permissions",
+			MaxConcurrent:   3,
+			MaxRetryBackoff: 5 * time.Minute,
+		},
+	}
+
+	if tracker, ok := fm["tracker"].(map[string]any); ok {
+		if v, ok := tracker["kind"].(string); ok {
+			cfg.Tracker.Kind = v
+		}
+		if v, ok := tracker["api_key"].(string); ok {
+			cfg.Tracker.APIKey = resolveEnvVar(v)
+		}
+		if v, ok := tracker["endpoint"].(string); ok {
+			cfg.Tracker.Endpoint = v
+		}
+		if v, ok := tracker["project_slug"].(string); ok {
+			cfg.Tracker.ProjectSlug = v
+		}
+		if v, ok := tracker["active_states"].([]any); ok {
+			cfg.Tracker.ActiveStates = toStringSlice(v)
+		}
+		if v, ok := tracker["terminal_states"].([]any); ok {
+			cfg.Tracker.TerminalStates = toStringSlice(v)
+		}
+	}
+
+	if polling, ok := fm["polling"].(map[string]any); ok {
+		if v, ok := toInt(polling["interval_ms"]); ok {
+			cfg.Polling.Interval = time.Duration(v) * time.Millisecond
+		}
+	}
+
+	if agent, ok := fm["agent"].(map[string]any); ok {
+		if v, ok := agent["command"].(string); ok {
+			cfg.Agent.Command = v
+		}
+		if v, ok := toInt(agent["max_concurrent"]); ok {
+			cfg.Agent.MaxConcurrent = v
+		}
+		if v, ok := toInt(agent["max_retry_backoff_ms"]); ok {
+			cfg.Agent.MaxRetryBackoff = time.Duration(v) * time.Millisecond
+		}
+	}
+
+	if cfg.Tracker.Kind != "linear" {
+		return cfg, fmt.Errorf("unsupported tracker kind: %q", cfg.Tracker.Kind)
+	}
+	if cfg.Tracker.ProjectSlug == "" {
+		return cfg, fmt.Errorf("tracker.project_slug is required")
+	}
+	if cfg.Tracker.APIKey == "" {
+		return cfg, fmt.Errorf("tracker.api_key is required (use $ENV_VAR syntax)")
+	}
+
+	return cfg, nil
+}
+
+// resolveEnvVar expands a $VAR reference from the environment.
+func resolveEnvVar(s string) string {
+	if strings.HasPrefix(s, "$") {
+		return os.Getenv(s[1:])
+	}
+	return s
+}
+
+func toStringSlice(v []any) []string {
+	out := make([]string, 0, len(v))
+	for _, item := range v {
+		if s, ok := item.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func toInt(v any) (int, bool) {
+	switch n := v.(type) {
+	case int:
+		return n, true
+	case float64:
+		return int(n), true
+	default:
+		return 0, false
+	}
+}
