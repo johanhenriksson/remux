@@ -70,6 +70,9 @@ func OpenSession(opts OpenSessionOptions) error {
 	}
 
 	if tmux.SessionExists(opts.Name) {
+		if opts.Detach {
+			return nil
+		}
 		if tmux.InSession() {
 			return tmux.SwitchTo(opts.Name)
 		}

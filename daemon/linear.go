@@ -147,14 +147,18 @@ type IssueFilter struct {
 // FetchIssues returns issues matching the given filter.
 func (c *LinearClient) FetchIssues(filter IssueFilter) ([]Issue, error) {
 	// Build variable declarations and filter clauses dynamically
-	varDecls := []string{"$slug: String!", "$states: [String!]!", "$cursor: String"}
+	varDecls := []string{"$slug: String!", "$cursor: String"}
 	filterClauses := []string{
 		"project: { slugId: { eq: $slug } }",
-		"state: { name: { in: $states } }",
 	}
 	vars := map[string]any{
-		"slug":   filter.ProjectSlug,
-		"states": filter.States,
+		"slug": filter.ProjectSlug,
+	}
+
+	if len(filter.States) > 0 {
+		varDecls = append(varDecls, "$states: [String!]!")
+		filterClauses = append(filterClauses, "state: { name: { in: $states } }")
+		vars["states"] = filter.States
 	}
 
 	if len(filter.Labels) > 0 {
@@ -229,8 +233,8 @@ func (c *LinearClient) FetchIssueStatesByIDs(ids []string) (map[string]string, e
 
 	query := `
 		query($ids: [ID!]!) {
-			nodes(ids: $ids) {
-				... on Issue {
+			issues(filter: { id: { in: $ids } }) {
+				nodes {
 					id
 					state { name }
 				}
@@ -244,19 +248,21 @@ func (c *LinearClient) FetchIssueStatesByIDs(ids []string) (map[string]string, e
 	}
 
 	var result struct {
-		Nodes []struct {
-			ID    string `json:"id"`
-			State *struct {
-				Name string `json:"name"`
-			} `json:"state"`
-		} `json:"nodes"`
+		Issues struct {
+			Nodes []struct {
+				ID    string `json:"id"`
+				State *struct {
+					Name string `json:"name"`
+				} `json:"state"`
+			} `json:"nodes"`
+		} `json:"issues"`
 	}
 	if err := json.Unmarshal(data, &result); err != nil {
-		return nil, fmt.Errorf("unmarshal nodes: %w", err)
+		return nil, fmt.Errorf("unmarshal issues: %w", err)
 	}
 
-	states := make(map[string]string, len(result.Nodes))
-	for _, n := range result.Nodes {
+	states := make(map[string]string, len(result.Issues.Nodes))
+	for _, n := range result.Issues.Nodes {
 		if n.ID != "" && n.State != nil {
 			states[n.ID] = n.State.Name
 		}
