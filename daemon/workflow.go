@@ -25,6 +25,8 @@ type TrackerConfig struct {
 	ProjectSlug    string
 	ActiveStates   []string
 	TerminalStates []string
+	Labels         []string // filter by label names (all must match)
+	AssigneeEmail  string   // filter by assignee email
 }
 
 type PollingConfig struct {
@@ -146,6 +148,12 @@ func parseConfig(fm map[string]any) (WorkflowConfig, error) {
 		}
 		if v, ok := tracker["terminal_states"].([]any); ok {
 			cfg.Tracker.TerminalStates = toStringSlice(v)
+		}
+		if v, ok := tracker["labels"].([]any); ok {
+			cfg.Tracker.Labels = toStringSlice(v)
+		}
+		if v, ok := tracker["assignee_email"].(string); ok {
+			cfg.Tracker.AssigneeEmail = resolveEnvVar(v)
 		}
 	}
 
