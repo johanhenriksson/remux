@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/johanhenriksson/remux/registry"
@@ -191,9 +192,13 @@ func CleanupWorkspace(issue Issue, repoRoot, destDir string) {
 	}
 }
 
+var ticketPattern = regexp.MustCompile(`^(.*?[a-zA-Z]+-\d+)`)
+
 func issueBranch(issue Issue) string {
 	if issue.BranchName != "" {
-		return issue.BranchName
+		if m := ticketPattern.FindString(issue.BranchName); m != "" {
+			return m
+		}
 	}
 	return strings.ToLower(issue.Identifier)
 }
