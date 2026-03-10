@@ -44,7 +44,8 @@ func sanitizeName(name string) string {
 
 // SessionExists checks if a tmux session with the given name exists.
 func SessionExists(name string) bool {
-	return run("has-session", "-t", sanitizeName(name)) == nil
+	cmd := exec.Command("tmux", "has-session", "-t", sanitizeName(name))
+	return cmd.Run() == nil
 }
 
 // Attach attaches to an existing tmux session.
