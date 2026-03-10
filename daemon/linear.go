@@ -136,24 +136,42 @@ func (n issueNode) toIssue() Issue {
 	}
 }
 
-// FetchCandidates returns issues matching the given project and active states.
-func (c *LinearClient) FetchCandidates(projectSlug string, activeStates []string) ([]Issue, error) {
-	return c.fetchByStates(projectSlug, activeStates)
+// IssueFilter holds parameters for querying issues.
+type IssueFilter struct {
+	ProjectSlug   string
+	States        []string
+	Labels        []string // if non-empty, filter issues that have all these labels
+	AssigneeEmail string   // if non-empty, filter by assignee email
 }
 
-// FetchByStates returns issues matching the given project and states.
-func (c *LinearClient) FetchByStates(projectSlug string, states []string) ([]Issue, error) {
-	return c.fetchByStates(projectSlug, states)
-}
+// FetchIssues returns issues matching the given filter.
+func (c *LinearClient) FetchIssues(filter IssueFilter) ([]Issue, error) {
+	// Build variable declarations and filter clauses dynamically
+	varDecls := []string{"$slug: String!", "$states: [String!]!", "$cursor: String"}
+	filterClauses := []string{
+		"project: { slugId: { eq: $slug } }",
+		"state: { name: { in: $states } }",
+	}
+	vars := map[string]any{
+		"slug":   filter.ProjectSlug,
+		"states": filter.States,
+	}
 
-func (c *LinearClient) fetchByStates(projectSlug string, states []string) ([]Issue, error) {
+	if len(filter.Labels) > 0 {
+		varDecls = append(varDecls, "$labels: [String!]!")
+		filterClauses = append(filterClauses, "labels: { some: { name: { in: $labels } } }")
+		vars["labels"] = filter.Labels
+	}
+	if filter.AssigneeEmail != "" {
+		varDecls = append(varDecls, "$email: String!")
+		filterClauses = append(filterClauses, "assignee: { email: { eq: $email } }")
+		vars["email"] = filter.AssigneeEmail
+	}
+
 	query := fmt.Sprintf(`
-		query($slug: String!, $states: [String!]!, $cursor: String) {
+		query(%s) {
 			issues(
-				filter: {
-					project: { slugId: { eq: $slug } }
-					state: { name: { in: $states } }
-				}
+				filter: { %s }
 				first: 50
 				after: $cursor
 			) {
@@ -164,17 +182,13 @@ func (c *LinearClient) fetchByStates(projectSlug string, states []string) ([]Iss
 				}
 			}
 		}
-	`, issueFields)
+	`, strings.Join(varDecls, ", "), strings.Join(filterClauses, "\n\t\t\t\t\t"), issueFields)
 
 	var allIssues []Issue
 	var cursor *string
 
 	for {
-		vars := map[string]any{
-			"slug":   projectSlug,
-			"states": states,
-			"cursor": cursor,
-		}
+		vars["cursor"] = cursor
 
 		data, err := c.do(query, vars)
 		if err != nil {

@@ -78,6 +78,67 @@ You are working on issue {{.Identifier}}: {{.Title}}
 	}
 }
 
+func TestLoadWorkflowLabelsAndAssignee(t *testing.T) {
+	content := `---
+tracker:
+  api_key: $LINEAR_API_KEY
+  project_slug: test-project
+  labels: ["Claudable", "Urgent"]
+  assignee_email: $ASSIGNEE_EMAIL
+---
+Do work on {{.Identifier}}
+`
+	t.Setenv("LINEAR_API_KEY", "key")
+	t.Setenv("ASSIGNEE_EMAIL", "user@co.com")
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "WORKFLOW.md")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	wf, err := LoadWorkflow(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(wf.Config.Tracker.Labels) != 2 || wf.Config.Tracker.Labels[0] != "Claudable" || wf.Config.Tracker.Labels[1] != "Urgent" {
+		t.Errorf("labels = %v, want [Claudable Urgent]", wf.Config.Tracker.Labels)
+	}
+	if wf.Config.Tracker.AssigneeEmail != "user@co.com" {
+		t.Errorf("assignee_email = %q, want user@co.com", wf.Config.Tracker.AssigneeEmail)
+	}
+}
+
+func TestLoadWorkflowLabelsAndAssigneeDefaults(t *testing.T) {
+	content := `---
+tracker:
+  api_key: $LINEAR_API_KEY
+  project_slug: test-project
+---
+Do work on {{.Identifier}}
+`
+	t.Setenv("LINEAR_API_KEY", "key")
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "WORKFLOW.md")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	wf, err := LoadWorkflow(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if wf.Config.Tracker.Labels != nil {
+		t.Errorf("labels = %v, want nil", wf.Config.Tracker.Labels)
+	}
+	if wf.Config.Tracker.AssigneeEmail != "" {
+		t.Errorf("assignee_email = %q, want empty", wf.Config.Tracker.AssigneeEmail)
+	}
+}
+
 func TestLoadWorkflowDefaults(t *testing.T) {
 	content := `---
 tracker:
