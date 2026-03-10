@@ -143,7 +143,7 @@ func setupTabs(session, workdir string, tabs []config.Tab) error {
 				}
 			}
 			// Give TUI time to become interactive after awaited text appears
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(1 * time.Second)
 			if err := tmux.SendText(session, "", prompt); err != nil {
 				return err
 			}
