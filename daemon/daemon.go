@@ -208,9 +208,8 @@ func (o *Orchestrator) reconcile(ctx context.Context) {
 		if activeSet[state] {
 			entry.Issue.State = state
 		} else {
-			// Not active, not terminal — cancel without cleanup
-			log.Printf("[%s] issue state %q is no longer active, cancelling", entry.Identifier, state)
-			entry.Cancel()
+			// Agent moved the issue to a non-active state (e.g. "Planned", "Review").
+			// Let it finish — it will exit on its own.
 		}
 	}
 }
@@ -221,6 +220,11 @@ func (o *Orchestrator) dispatch(ctx context.Context, issue Issue, attempt int) {
 	workspacePath, err := EnsureWorkspace(issue, o.repoRoot, o.destDir)
 	if err != nil {
 		log.Printf("[%s] ensure workspace: %v", issue.Identifier, err)
+		return
+	}
+
+	if err := EnsureSession(workspacePath, o.destDir); err != nil {
+		log.Printf("[%s] ensure session: %v", issue.Identifier, err)
 		return
 	}
 
