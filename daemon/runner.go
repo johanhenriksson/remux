@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/johanhenriksson/remux/git"
 	"github.com/johanhenriksson/remux/registry"
 	"github.com/johanhenriksson/remux/spaces"
 )
@@ -30,6 +31,10 @@ func EnsureWorkspace(issue Issue, repoRoot, destDir string) (string, error) {
 		if _, err := os.Stat(entry.Path); err == nil {
 			return entry.Path, nil
 		}
+	}
+
+	if err := git.Pull(repoRoot); err != nil {
+		log.Printf("[%s] git pull: %v (continuing with current HEAD)", issue.Identifier, err)
 	}
 
 	path, err := spaces.Create(spaces.CreateOptions{
