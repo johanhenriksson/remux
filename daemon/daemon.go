@@ -6,6 +6,7 @@ import (
 	"log"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/johanhenriksson/remux/spaces"
@@ -214,8 +215,39 @@ func (o *Orchestrator) reconcile(ctx context.Context) {
 	}
 }
 
+func priorityName(p *int) string {
+	if p == nil {
+		return "none"
+	}
+	switch *p {
+	case 0:
+		return "none"
+	case 1:
+		return "urgent"
+	case 2:
+		return "high"
+	case 3:
+		return "medium"
+	case 4:
+		return "low"
+	default:
+		return fmt.Sprintf("%d", *p)
+	}
+}
+
 func (o *Orchestrator) dispatch(ctx context.Context, issue Issue, attempt int) {
-	log.Printf("[%s] dispatching (attempt %d): %s", issue.Identifier, attempt, issue.Title)
+	branch := issueBranch(issue)
+	labels := "none"
+	if len(issue.Labels) > 0 {
+		labels = strings.Join(issue.Labels, ", ")
+	}
+	log.Printf("[%s] picking up issue (attempt %d)", issue.Identifier, attempt)
+	log.Printf("[%s]   title:    %s", issue.Identifier, issue.Title)
+	log.Printf("[%s]   state:    %s", issue.Identifier, issue.State)
+	log.Printf("[%s]   priority: %s", issue.Identifier, priorityName(issue.Priority))
+	log.Printf("[%s]   labels:   %s", issue.Identifier, labels)
+	log.Printf("[%s]   branch:   %s", issue.Identifier, branch)
+	log.Printf("[%s]   url:      %s", issue.Identifier, issue.URL)
 
 	workspacePath, err := EnsureWorkspace(issue, o.repoRoot, o.destDir)
 	if err != nil {
@@ -300,7 +332,11 @@ func (o *Orchestrator) scheduleRetry(issueID, identifier string, attempt int, de
 		Timer:      timer,
 	}
 
-	log.Printf("[%s] retry scheduled in %s (attempt %d)", identifier, delay.Round(time.Second), attempt)
+	if err != nil {
+		log.Printf("[%s] retry scheduled in %s (attempt %d)", identifier, delay.Round(time.Second), attempt)
+	} else {
+		log.Printf("[%s] rechecking eligibility in %s", identifier, delay.Round(time.Second))
+	}
 }
 
 func (o *Orchestrator) handleRetry(ctx context.Context, issueID string) {
