@@ -31,6 +31,11 @@ func run(repoRoot string, args ...string) error {
 	return cmd.Run()
 }
 
+// Pull fetches and merges the latest changes from the remote.
+func Pull(repoRoot string) error {
+	return run(repoRoot, "pull")
+}
+
 // CreateBranch creates a new branch at the current HEAD.
 func CreateBranch(repoRoot, name string) error {
 	return run(repoRoot, "branch", name)
