@@ -71,7 +71,7 @@ func LoadWorkflow(path string) (*Workflow, error) {
 }
 
 // RenderPrompt renders the prompt template with the given issue and attempt number.
-func (w *Workflow) RenderPrompt(issue Issue, attempt *int) (string, error) {
+func (w *Workflow) RenderPrompt(issue Issue, attempt *int, statusFix bool) (string, error) {
 	data := map[string]any{
 		"ID":          issue.ID,
 		"Identifier":  issue.Identifier,
@@ -83,6 +83,7 @@ func (w *Workflow) RenderPrompt(issue Issue, attempt *int) (string, error) {
 		"URL":         issue.URL,
 		"Labels":      issue.Labels,
 		"Attempt":     attempt,
+		"StatusFix":   statusFix,
 	}
 
 	var buf bytes.Buffer

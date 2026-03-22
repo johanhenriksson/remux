@@ -261,7 +261,7 @@ func (o *Orchestrator) dispatch(ctx context.Context, issue Issue, attempt int) {
 	}
 
 	attemptPtr := &attempt
-	prompt, err := o.workflow.RenderPrompt(issue, attemptPtr)
+	prompt, err := o.workflow.RenderPrompt(issue, attemptPtr, false)
 	if err != nil {
 		log.Printf("[%s] render prompt: %v", issue.Identifier, err)
 		return
@@ -295,6 +295,53 @@ func (o *Orchestrator) dispatch(ctx context.Context, issue Issue, attempt int) {
 	}()
 }
 
+func (o *Orchestrator) dispatchStatusFix(ctx context.Context, issue Issue, attempt int) {
+	log.Printf("[%s] dispatching status fix", issue.Identifier)
+
+	workspacePath, err := EnsureWorkspace(issue, o.repoRoot, o.destDir)
+	if err != nil {
+		log.Printf("[%s] ensure workspace: %v", issue.Identifier, err)
+		return
+	}
+
+	if err := EnsureSession(workspacePath, o.destDir); err != nil {
+		log.Printf("[%s] ensure session: %v", issue.Identifier, err)
+		return
+	}
+
+	prompt, err := o.workflow.RenderPrompt(issue, nil, true)
+	if err != nil {
+		log.Printf("[%s] render status fix prompt: %v", issue.Identifier, err)
+		return
+	}
+
+	runCtx, cancel := context.WithCancel(ctx)
+	resultCh, err := LaunchAgent(runCtx, issue, o.workflow.Config.Agent.Command, prompt, workspacePath)
+	if err != nil {
+		cancel()
+		log.Printf("[%s] launch status fix agent: %v", issue.Identifier, err)
+		return
+	}
+
+	entry := &RunEntry{
+		IssueID:    issue.ID,
+		Identifier: issue.Identifier,
+		Issue:      issue,
+		Attempt:    attempt,
+		StatusFix:  true,
+		StartedAt:  time.Now(),
+		Cancel:     cancel,
+		ResultCh:   resultCh,
+	}
+
+	o.running[issue.ID] = entry
+
+	go func() {
+		result := <-resultCh
+		o.resultCh <- result
+	}()
+}
+
 func (o *Orchestrator) handleResult(ctx context.Context, result RunResult) {
 	entry, ok := o.running[result.IssueID]
 	if !ok {
@@ -304,16 +351,15 @@ func (o *Orchestrator) handleResult(ctx context.Context, result RunResult) {
 
 	if result.Success {
 		log.Printf("[%s] agent completed successfully (attempt %d)", entry.Identifier, entry.Attempt)
-		// Schedule a short retry to check if the issue is still active
-		o.scheduleRetry(entry.IssueID, entry.Identifier, entry.Attempt, 1*time.Second, nil)
+		o.scheduleRetry(entry.IssueID, entry.Identifier, entry.Attempt, 1*time.Second, nil, entry.Issue.State, entry.StatusFix)
 	} else {
 		log.Printf("[%s] agent failed (attempt %d): %v", entry.Identifier, entry.Attempt, result.Err)
 		delay := retryDelay(entry.Attempt, o.workflow.Config.Agent.MaxRetryBackoff)
-		o.scheduleRetry(entry.IssueID, entry.Identifier, entry.Attempt+1, delay, result.Err)
+		o.scheduleRetry(entry.IssueID, entry.Identifier, entry.Attempt+1, delay, result.Err, "", false)
 	}
 }
 
-func (o *Orchestrator) scheduleRetry(issueID, identifier string, attempt int, delay time.Duration, err error) {
+func (o *Orchestrator) scheduleRetry(issueID, identifier string, attempt int, delay time.Duration, err error, prevState string, statusFix bool) {
 	// Cancel any existing retry for this issue
 	if existing, ok := o.retries[issueID]; ok {
 		existing.Timer.Stop()
@@ -327,6 +373,8 @@ func (o *Orchestrator) scheduleRetry(issueID, identifier string, attempt int, de
 		IssueID:    issueID,
 		Identifier: identifier,
 		Attempt:    attempt,
+		StatusFix:  statusFix,
+		PrevState:  prevState,
 		DueAt:      time.Now().Add(delay),
 		Error:      err,
 		Timer:      timer,
@@ -353,7 +401,7 @@ func (o *Orchestrator) handleRetry(ctx context.Context, issueID string) {
 		log.Printf("[%s] retry fetch: %v", retry.Identifier, err)
 		// Re-schedule with incremented attempt
 		delay := retryDelay(retry.Attempt, o.workflow.Config.Agent.MaxRetryBackoff)
-		o.scheduleRetry(issueID, retry.Identifier, retry.Attempt+1, delay, err)
+		o.scheduleRetry(issueID, retry.Identifier, retry.Attempt+1, delay, err, "", false)
 		return
 	}
 
@@ -371,10 +419,21 @@ func (o *Orchestrator) handleRetry(ctx context.Context, issueID string) {
 		return
 	}
 
+	if retry.Error == nil && retry.PrevState != "" && found.State == retry.PrevState {
+		if retry.StatusFix {
+			log.Printf("[%s] status fix did not change state (%s), releasing claim", retry.Identifier, found.State)
+			delete(o.claimed, issueID)
+			return
+		}
+		log.Printf("[%s] state unchanged after success (%s), dispatching status fix", retry.Identifier, found.State)
+		o.dispatchStatusFix(ctx, *found, retry.Attempt)
+		return
+	}
+
 	if len(o.running) >= o.workflow.Config.Agent.MaxConcurrent {
 		log.Printf("[%s] no slots available for retry, requeueing", retry.Identifier)
 		delay := retryDelay(retry.Attempt, o.workflow.Config.Agent.MaxRetryBackoff)
-		o.scheduleRetry(issueID, retry.Identifier, retry.Attempt+1, delay, retry.Error)
+		o.scheduleRetry(issueID, retry.Identifier, retry.Attempt+1, delay, retry.Error, "", false)
 		return
 	}
 
