@@ -31,9 +31,9 @@ func run(repoRoot string, args ...string) error {
 	return cmd.Run()
 }
 
-// Pull fetches and merges the latest changes from the remote.
+// Pull fast-forwards the current branch to match the remote.
 func Pull(repoRoot string) error {
-	return run(repoRoot, "pull")
+	return run(repoRoot, "pull", "--ff-only")
 }
 
 // CreateBranch creates a new branch at the current HEAD.
