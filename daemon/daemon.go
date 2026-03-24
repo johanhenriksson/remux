@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -105,7 +106,7 @@ func (o *Orchestrator) startupCleanup() {
 		spaceName := fmt.Sprintf("%s-%s", repoName, spaces.SlugifyBranch(branch))
 		worktreePath := filepath.Join(o.destDir, spaceName)
 
-		if _, statErr := filepath.Abs(worktreePath); statErr == nil {
+		if _, statErr := os.Stat(worktreePath); statErr == nil {
 			log.Printf("[%s] cleaning up terminal workspace", issue.Identifier)
 			CleanupWorkspace(issue, o.repoRoot, o.destDir)
 		}
