@@ -53,8 +53,12 @@ func runDrop(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to get current directory: %w", err)
 		}
-		spacePath = cwd
-		spaceName = filepath.Base(cwd)
+		root, err := spaces.FindRoot(cwd)
+		if err != nil {
+			return fmt.Errorf("not in a remux workspace: %w", err)
+		}
+		spacePath = root
+		spaceName = filepath.Base(root)
 	}
 
 	if err := spaces.Drop(spacePath, forceFlag); err != nil {
