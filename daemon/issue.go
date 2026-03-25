@@ -26,7 +26,8 @@ type RunEntry struct {
 	Identifier string
 	Issue      Issue
 	Attempt    int
-	StatusFix  bool
+	StepKey    string
+	CommentID  string
 	StartedAt  time.Time
 	Cancel     context.CancelFunc
 	ResultCh   <-chan RunResult
@@ -37,8 +38,6 @@ type RetryEntry struct {
 	IssueID    string
 	Identifier string
 	Attempt    int
-	StatusFix  bool
-	PrevState  string
 	DueAt      time.Time
 	Error      error
 	Timer      *time.Timer

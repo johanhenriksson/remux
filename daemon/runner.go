@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/johanhenriksson/remux/git"
 	"github.com/johanhenriksson/remux/registry"
@@ -63,15 +65,14 @@ func EnsureSession(workspacePath, destDir string) error {
 
 // LaunchAgent runs a claude agent as a subprocess in the workspace directory.
 // Parses stream-json output for logging. Returns a channel that receives the
-// result when the process exits.
-func LaunchAgent(ctx context.Context, issue Issue, agentCmd, prompt, workspacePath string) (<-chan RunResult, error) {
-	// Write prompt to file for reference
+// result when the process exits. If logger is non-nil, text output is streamed
+// to the Linear comment.
+func LaunchAgent(ctx context.Context, issue Issue, agentCmd, prompt, workspacePath string, logger *CommentLogger) (<-chan RunResult, error) {
 	promptPath := filepath.Join(workspacePath, ".remux-prompt.md")
 	if err := os.WriteFile(promptPath, []byte(prompt), 0644); err != nil {
 		return nil, fmt.Errorf("write prompt file: %w", err)
 	}
 
-	// Build command with stream-json output
 	parts := strings.Fields(agentCmd)
 	parts = append(parts, "--output-format", "stream-json", "--verbose", "-p", prompt)
 
@@ -94,10 +95,14 @@ func LaunchAgent(ctx context.Context, issue Issue, agentCmd, prompt, workspacePa
 	go func() {
 		prefix := fmt.Sprintf("[%s]", issue.Identifier)
 		scanner := bufio.NewScanner(stdout)
-		scanner.Buffer(make([]byte, 1024*1024), 1024*1024) // 1MB line buffer
+		scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 
 		for scanner.Scan() {
-			processStreamLine(prefix, scanner.Bytes())
+			processStreamLine(prefix, scanner.Bytes(), logger)
+		}
+
+		if logger != nil {
+			logger.Close()
 		}
 
 		err := cmd.Wait()
@@ -111,6 +116,70 @@ func LaunchAgent(ctx context.Context, issue Issue, agentCmd, prompt, workspacePa
 	}()
 
 	return resultCh, nil
+}
+
+// CommentLogger accumulates agent text output and debounce-flushes it to a Linear comment.
+type CommentLogger struct {
+	client    *LinearClient
+	commentID string
+	header    string
+
+	mu      sync.Mutex
+	lines   []string
+	timer   *time.Timer
+	pending bool
+}
+
+func NewCommentLogger(client *LinearClient, commentID, header string) *CommentLogger {
+	return &CommentLogger{
+		client:    client,
+		commentID: commentID,
+		header:    header,
+	}
+}
+
+func (cl *CommentLogger) Append(text string) {
+	cl.mu.Lock()
+	defer cl.mu.Unlock()
+
+	cl.lines = append(cl.lines, text)
+
+	if !cl.pending {
+		cl.pending = true
+		cl.timer = time.AfterFunc(5*time.Second, cl.flush)
+	}
+}
+
+func (cl *CommentLogger) flush() {
+	cl.mu.Lock()
+	cl.pending = false
+	body := cl.buildBody()
+	cl.mu.Unlock()
+
+	if err := cl.client.UpdateComment(cl.commentID, body); err != nil {
+		log.Printf("comment update: %v", err)
+	}
+}
+
+func (cl *CommentLogger) Close() {
+	cl.mu.Lock()
+	if cl.timer != nil {
+		cl.timer.Stop()
+	}
+	cl.pending = false
+	body := cl.buildBody()
+	cl.mu.Unlock()
+
+	if err := cl.client.UpdateComment(cl.commentID, body); err != nil {
+		log.Printf("comment update (final): %v", err)
+	}
+}
+
+func (cl *CommentLogger) buildBody() string {
+	if len(cl.lines) == 0 {
+		return cl.header
+	}
+	return cl.header + "\n\n---\n### Agent Log\n" + strings.Join(cl.lines, "\n")
 }
 
 // streamEvent is the minimal structure for parsing stream-json lines.
@@ -136,11 +205,11 @@ type assistantMessage struct {
 type contentBlock struct {
 	Type  string `json:"type"`
 	Text  string `json:"text"`
-	Name  string `json:"name"`  // tool_use name
-	Input any    `json:"input"` // tool_use input
+	Name  string `json:"name"`
+	Input any    `json:"input"`
 }
 
-func processStreamLine(prefix string, line []byte) {
+func processStreamLine(prefix string, line []byte, logger *CommentLogger) {
 	var event streamEvent
 	if err := json.Unmarshal(line, &event); err != nil {
 		return
@@ -156,9 +225,11 @@ func processStreamLine(prefix string, line []byte) {
 			case "tool_use":
 				log.Printf("%s tool: %s", prefix, block.Name)
 			case "text":
-				// Log first line of text as a summary
 				if text := firstLine(block.Text); text != "" {
 					log.Printf("%s text: %s", prefix, text)
+				}
+				if logger != nil && strings.TrimSpace(block.Text) != "" {
+					logger.Append(block.Text)
 				}
 			}
 		}

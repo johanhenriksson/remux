@@ -225,6 +225,101 @@ func (c *LinearClient) FetchIssues(filter IssueFilter) ([]Issue, error) {
 	return allIssues, nil
 }
 
+// CreateComment creates a comment on the given issue and returns the comment ID.
+func (c *LinearClient) CreateComment(issueID, body string) (string, error) {
+	query := `
+		mutation($issueId: String!, $body: String!) {
+			commentCreate(input: { issueId: $issueId, body: $body }) {
+				comment { id }
+			}
+		}
+	`
+	data, err := c.do(query, map[string]any{"issueId": issueID, "body": body})
+	if err != nil {
+		return "", err
+	}
+
+	var result struct {
+		CommentCreate struct {
+			Comment struct {
+				ID string `json:"id"`
+			} `json:"comment"`
+		} `json:"commentCreate"`
+	}
+	if err := json.Unmarshal(data, &result); err != nil {
+		return "", fmt.Errorf("unmarshal comment: %w", err)
+	}
+	return result.CommentCreate.Comment.ID, nil
+}
+
+// UpdateComment updates the body of an existing comment.
+func (c *LinearClient) UpdateComment(commentID, body string) error {
+	query := `
+		mutation($id: String!, $body: String!) {
+			commentUpdate(id: $id, input: { body: $body }) {
+				comment { id }
+			}
+		}
+	`
+	_, err := c.do(query, map[string]any{"id": commentID, "body": body})
+	return err
+}
+
+// UpdateIssueState moves an issue to the given state by name.
+// Resolves the state name to an ID by querying the issue's team workflow states.
+func (c *LinearClient) UpdateIssueState(issueID, stateName string) error {
+	stateQuery := `
+		query($issueId: String!) {
+			issue(id: $issueId) {
+				team {
+					states { nodes { id name } }
+				}
+			}
+		}
+	`
+	data, err := c.do(stateQuery, map[string]any{"issueId": issueID})
+	if err != nil {
+		return fmt.Errorf("fetch team states: %w", err)
+	}
+
+	var stateResult struct {
+		Issue struct {
+			Team struct {
+				States struct {
+					Nodes []struct {
+						ID   string `json:"id"`
+						Name string `json:"name"`
+					} `json:"nodes"`
+				} `json:"states"`
+			} `json:"team"`
+		} `json:"issue"`
+	}
+	if err := json.Unmarshal(data, &stateResult); err != nil {
+		return fmt.Errorf("unmarshal team states: %w", err)
+	}
+
+	var stateID string
+	for _, s := range stateResult.Issue.Team.States.Nodes {
+		if strings.EqualFold(s.Name, stateName) {
+			stateID = s.ID
+			break
+		}
+	}
+	if stateID == "" {
+		return fmt.Errorf("state %q not found in team workflow", stateName)
+	}
+
+	updateQuery := `
+		mutation($issueId: String!, $stateId: String!) {
+			issueUpdate(id: $issueId, input: { stateId: $stateId }) {
+				issue { id }
+			}
+		}
+	`
+	_, err = c.do(updateQuery, map[string]any{"issueId": issueID, "stateId": stateID})
+	return err
+}
+
 // FetchIssueStatesByIDs returns a map of issue ID to current state name.
 func (c *LinearClient) FetchIssueStatesByIDs(ids []string) (map[string]string, error) {
 	if len(ids) == 0 {

@@ -11,6 +11,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// WorkflowStep defines a single step in the issue workflow.
+type WorkflowStep struct {
+	Name           string // display name for this step
+	TriggerStatus  string // linear state name that triggers this step
+	NextStatus     string // where to move on success
+	ProgressStatus string // where to move when work starts
+}
+
 // WorkflowConfig holds typed configuration extracted from WORKFLOW.md front matter.
 type WorkflowConfig struct {
 	Tracker  TrackerConfig
@@ -23,10 +31,29 @@ type TrackerConfig struct {
 	APIKey         string
 	Endpoint       string
 	ProjectSlug    string
-	ActiveStates   []string
+	Steps          map[string]WorkflowStep
 	TerminalStates []string
-	Labels         []string // filter by label names (all must match)
-	AssigneeEmail  string   // filter by assignee email
+	Labels         []string
+	AssigneeEmail  string
+}
+
+// ActiveStates returns the list of Linear state names that the daemon picks up.
+func (tc *TrackerConfig) ActiveStates() []string {
+	states := make([]string, 0, len(tc.Steps))
+	for _, step := range tc.Steps {
+		states = append(states, step.TriggerStatus)
+	}
+	return states
+}
+
+// StepForState returns the step key and config for a given Linear state name.
+func (tc *TrackerConfig) StepForState(stateName string) (string, WorkflowStep, bool) {
+	for key, step := range tc.Steps {
+		if strings.EqualFold(step.TriggerStatus, stateName) {
+			return key, step, true
+		}
+	}
+	return "", WorkflowStep{}, false
 }
 
 type PollingConfig struct {
@@ -70,8 +97,8 @@ func LoadWorkflow(path string) (*Workflow, error) {
 	return &Workflow{Config: cfg, template: tmpl}, nil
 }
 
-// RenderPrompt renders the prompt template with the given issue and attempt number.
-func (w *Workflow) RenderPrompt(issue Issue, attempt *int, statusFix bool) (string, error) {
+// RenderPrompt renders the prompt template with the given issue, step name, and attempt number.
+func (w *Workflow) RenderPrompt(issue Issue, stepName string, attempt *int) (string, error) {
 	data := map[string]any{
 		"ID":          issue.ID,
 		"Identifier":  issue.Identifier,
@@ -79,11 +106,11 @@ func (w *Workflow) RenderPrompt(issue Issue, attempt *int, statusFix bool) (stri
 		"Description": issue.Description,
 		"Priority":    issue.Priority,
 		"State":       issue.State,
+		"StepName":    stepName,
 		"BranchName":  issue.BranchName,
 		"URL":         issue.URL,
 		"Labels":      issue.Labels,
 		"Attempt":     attempt,
-		"StatusFix":   statusFix,
 	}
 
 	var buf bytes.Buffer
@@ -118,7 +145,6 @@ func parseConfig(fm map[string]any) (WorkflowConfig, error) {
 		Tracker: TrackerConfig{
 			Kind:           "linear",
 			Endpoint:       "https://api.linear.app/graphql",
-			ActiveStates:   []string{"Todo", "In Progress"},
 			TerminalStates: []string{"Done", "Cancelled", "Closed", "Canceled", "Duplicate"},
 		},
 		Polling: PollingConfig{
@@ -144,9 +170,6 @@ func parseConfig(fm map[string]any) (WorkflowConfig, error) {
 		if v, ok := tracker["project_slug"].(string); ok {
 			cfg.Tracker.ProjectSlug = v
 		}
-		if v, ok := tracker["active_states"].([]any); ok {
-			cfg.Tracker.ActiveStates = toStringSlice(v)
-		}
 		if v, ok := tracker["terminal_states"].([]any); ok {
 			cfg.Tracker.TerminalStates = toStringSlice(v)
 		}
@@ -155,6 +178,36 @@ func parseConfig(fm map[string]any) (WorkflowConfig, error) {
 		}
 		if v, ok := tracker["assignee_email"].(string); ok {
 			cfg.Tracker.AssigneeEmail = resolveEnvVar(v)
+		}
+	}
+
+	if workflow, ok := fm["workflow"].(map[string]any); ok {
+		cfg.Tracker.Steps = make(map[string]WorkflowStep, len(workflow))
+		for key, val := range workflow {
+			stepMap, ok := val.(map[string]any)
+			if !ok {
+				continue
+			}
+			step := WorkflowStep{}
+			if v, ok := stepMap["name"].(string); ok {
+				step.Name = v
+			}
+			if v, ok := stepMap["trigger_status"].(string); ok {
+				step.TriggerStatus = v
+			}
+			if v, ok := stepMap["next_status"].(string); ok {
+				step.NextStatus = v
+			}
+			if v, ok := stepMap["progress_status"].(string); ok {
+				step.ProgressStatus = v
+			}
+			if step.Name == "" {
+				step.Name = key
+			}
+			if step.TriggerStatus == "" {
+				return cfg, fmt.Errorf("workflow step %q: trigger_status is required", key)
+			}
+			cfg.Tracker.Steps[key] = step
 		}
 	}
 
@@ -184,6 +237,9 @@ func parseConfig(fm map[string]any) (WorkflowConfig, error) {
 	}
 	if cfg.Tracker.APIKey == "" {
 		return cfg, fmt.Errorf("tracker.api_key is required (use $ENV_VAR syntax)")
+	}
+	if len(cfg.Tracker.Steps) == 0 {
+		return cfg, fmt.Errorf("workflow must define at least one step")
 	}
 
 	return cfg, nil
