@@ -138,10 +138,10 @@ func (n issueNode) toIssue() Issue {
 
 // IssueFilter holds parameters for querying issues.
 type IssueFilter struct {
-	ProjectSlug   string
-	States        []string
-	Labels        []string // if non-empty, filter issues that have all these labels
-	AssigneeEmail string   // if non-empty, filter by assignee email
+	ProjectSlug string
+	States      []string
+	Labels      []string // if non-empty, filter issues that have all these labels
+	AssigneeID  string   // if non-empty, filter by assignee user ID
 }
 
 // FetchIssues returns issues matching the given filter.
@@ -166,10 +166,10 @@ func (c *LinearClient) FetchIssues(filter IssueFilter) ([]Issue, error) {
 		filterClauses = append(filterClauses, "labels: { some: { name: { in: $labels } } }")
 		vars["labels"] = filter.Labels
 	}
-	if filter.AssigneeEmail != "" {
-		varDecls = append(varDecls, "$email: String!")
-		filterClauses = append(filterClauses, "assignee: { email: { eq: $email } }")
-		vars["email"] = filter.AssigneeEmail
+	if filter.AssigneeID != "" {
+		varDecls = append(varDecls, "$assigneeId: ID!")
+		filterClauses = append(filterClauses, "assignee: { id: { eq: $assigneeId } }")
+		vars["assigneeId"] = filter.AssigneeID
 	}
 
 	query := fmt.Sprintf(`
@@ -223,6 +223,27 @@ func (c *LinearClient) FetchIssues(filter IssueFilter) ([]Issue, error) {
 	}
 
 	return allIssues, nil
+}
+
+// FetchViewerID returns the user ID of the authenticated API user.
+func (c *LinearClient) FetchViewerID() (string, error) {
+	data, err := c.do(`query { viewer { id } }`, nil)
+	if err != nil {
+		return "", fmt.Errorf("fetch viewer: %w", err)
+	}
+
+	var result struct {
+		Viewer struct {
+			ID string `json:"id"`
+		} `json:"viewer"`
+	}
+	if err := json.Unmarshal(data, &result); err != nil {
+		return "", fmt.Errorf("unmarshal viewer: %w", err)
+	}
+	if result.Viewer.ID == "" {
+		return "", fmt.Errorf("viewer ID is empty")
+	}
+	return result.Viewer.ID, nil
 }
 
 // CreateComment creates a comment on the given issue and returns the comment ID.

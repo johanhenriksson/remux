@@ -34,7 +34,6 @@ type TrackerConfig struct {
 	Steps          map[string]WorkflowStep
 	TerminalStates []string
 	Labels         []string
-	AssigneeEmail  string
 }
 
 // ActiveStates returns the list of Linear state names that the daemon picks up.
@@ -175,9 +174,6 @@ func parseConfig(fm map[string]any) (WorkflowConfig, error) {
 		}
 		if v, ok := tracker["labels"].([]any); ok {
 			cfg.Tracker.Labels = toStringSlice(v)
-		}
-		if v, ok := tracker["assignee_email"].(string); ok {
-			cfg.Tracker.AssigneeEmail = resolveEnvVar(v)
 		}
 	}
 

@@ -22,6 +22,8 @@ type Orchestrator struct {
 	workflow *Workflow
 	linear   *LinearClient
 
+	viewerID string
+
 	running  map[string]*RunEntry
 	claimed  map[string]bool
 	retries  map[string]*RetryEntry
@@ -52,6 +54,13 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 	o.workflow = wf
 
 	o.linear = NewLinearClient(wf.Config.Tracker.Endpoint, wf.Config.Tracker.APIKey)
+
+	viewerID, err := o.linear.FetchViewerID()
+	if err != nil {
+		return fmt.Errorf("fetch api user: %w", err)
+	}
+	o.viewerID = viewerID
+	log.Printf("authenticated as user %s", viewerID)
 
 	o.startupCleanup()
 
@@ -84,10 +93,10 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 func (o *Orchestrator) issueFilter(states []string) IssueFilter {
 	cfg := o.workflow.Config.Tracker
 	return IssueFilter{
-		ProjectSlug:   cfg.ProjectSlug,
-		States:        states,
-		Labels:        cfg.Labels,
-		AssigneeEmail: cfg.AssigneeEmail,
+		ProjectSlug: cfg.ProjectSlug,
+		States:      states,
+		Labels:      cfg.Labels,
+		AssigneeID:  o.viewerID,
 	}
 }
 
@@ -126,7 +135,7 @@ func (o *Orchestrator) tick(ctx context.Context) {
 	cfg := o.workflow.Config.Tracker
 	activeStates := cfg.ActiveStates()
 	log.Printf("tick: querying for issues in states %v (labels=%v, assignee=%q)",
-		activeStates, cfg.Labels, cfg.AssigneeEmail)
+		activeStates, cfg.Labels, o.viewerID)
 
 	candidates, err := o.linear.FetchIssues(o.issueFilter(activeStates))
 	if err != nil {
