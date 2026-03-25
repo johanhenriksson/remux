@@ -91,12 +91,15 @@ Do NOT write any code. Only produce the plan.
 Implement the plan for this issue. Read any comments on the issue for the plan and human feedback.
 
 1. Read all comments on the issue to find the approved plan and any feedback
-2. Create a feature branch: `git checkout -b {{.BranchName}} origin/master`
-3. Implement the changes according to the plan
-4. Run tests iteratively: code, test, fix, repeat until all tests pass
-5. Commit your changes with a clear commit message referencing {{.Identifier}}
-6. Push the branch: `git push -u origin {{.BranchName}}`
+2. Implement the changes according to the plan
+3. Run tests iteratively: code, test, fix, repeat until all tests pass
+4. Commit your changes with a clear commit message referencing {{.Identifier}}
+5. Push the branch: `git push -u origin {{.BranchName}}`
+   {{- if .MilestoneBranch}}
+6. Open a PR: `gh pr create --base {{.MilestoneBranch}} --head {{.BranchName}} --title "{{.Identifier}}: {{.Title}}" --body "Resolves {{.Identifier}}"`
+   {{- else}}
 7. Open a PR: `gh pr create --base master --head {{.BranchName}} --title "{{.Identifier}}: {{.Title}}" --body "Resolves {{.Identifier}}"`
+   {{- end}}
 8. Post the PR link as a comment on the Linear issue (use `linear_createComment` with issue ID `{{.ID}}`)
 
 Make sure all tests pass before opening the PR.
@@ -110,5 +113,5 @@ The PR for this issue has been approved. Merge it.
 1. Find the PR for branch `{{.BranchName}}` using `gh pr list --head {{.BranchName}}`
 2. Check for any review comments that need to be addressed
 3. If there are requested changes, address them, push, and wait for approval
-4. Merge the PR: `gh pr merge {{.BranchName}} --squash --delete-branch`
+4. Merge the PR: `gh pr merge {{.BranchName}} --rebase --delete-branch`
    {{end}}

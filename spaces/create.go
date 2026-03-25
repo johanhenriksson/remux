@@ -28,6 +28,7 @@ type CreateOptions struct {
 	RepoRoot            string // Git repository root
 	DestDir             string // Destination directory for worktrees
 	BranchName          string // Name of the branch to create
+	BaseBranch          string // Base branch to create from (empty = current HEAD)
 	ReuseExistingBranch bool   // If true, reuse existing branch instead of erroring
 }
 
@@ -52,7 +53,13 @@ func Create(opts CreateOptions) (string, error) {
 	}
 
 	if !branchExists {
-		if err := git.CreateBranch(opts.RepoRoot, opts.BranchName); err != nil {
+		var err error
+		if opts.BaseBranch != "" {
+			err = git.CreateBranchFrom(opts.RepoRoot, opts.BranchName, opts.BaseBranch)
+		} else {
+			err = git.CreateBranch(opts.RepoRoot, opts.BranchName)
+		}
+		if err != nil {
 			return "", fmt.Errorf("failed to create branch: %w", err)
 		}
 		createdBranch = true

@@ -20,8 +20,9 @@ import (
 )
 
 // EnsureWorkspace creates or reuses a workspace for the given issue.
+// If baseBranch is non-empty, new branches are created from it instead of HEAD.
 // Returns the worktree path.
-func EnsureWorkspace(issue Issue, repoRoot, destDir string) (string, error) {
+func EnsureWorkspace(issue Issue, repoRoot, destDir, baseBranch string) (string, error) {
 	branch := issueBranch(issue)
 
 	reg, err := registry.Load(destDir)
@@ -43,6 +44,7 @@ func EnsureWorkspace(issue Issue, repoRoot, destDir string) (string, error) {
 		RepoRoot:            repoRoot,
 		DestDir:             destDir,
 		BranchName:          branch,
+		BaseBranch:          baseBranch,
 		ReuseExistingBranch: true,
 	})
 	if err != nil {
@@ -266,6 +268,19 @@ func CleanupWorkspace(issue Issue, repoRoot, destDir string) {
 	if err := spaces.Drop(worktreePath, true); err != nil {
 		log.Printf("[%s] cleanup workspace: %v", issue.Identifier, err)
 	}
+}
+
+// milestoneBranch returns the branch name for a milestone if one exists.
+// Returns empty string if the issue has no milestone or no matching branch exists.
+func milestoneBranch(issue Issue, repoRoot string) string {
+	if issue.Milestone == "" {
+		return ""
+	}
+	branch := spaces.SlugifyBranch(issue.Milestone)
+	if git.BranchExists(repoRoot, branch) {
+		return branch
+	}
+	return ""
 }
 
 var ticketPattern = regexp.MustCompile(`^(.*?[a-zA-Z]+-\d+)`)

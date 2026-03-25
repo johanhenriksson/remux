@@ -133,20 +133,10 @@ func (o *Orchestrator) tick(ctx context.Context) {
 	o.reconcile(ctx)
 
 	cfg := o.workflow.Config.Tracker
-	activeStates := cfg.ActiveStates()
-	log.Printf("tick: querying for issues in states %v (labels=%v, assignee=%q)",
-		activeStates, cfg.Labels, o.viewerID)
-
-	candidates, err := o.linear.FetchIssues(o.issueFilter(activeStates))
+	candidates, err := o.linear.FetchIssues(o.issueFilter(cfg.ActiveStates()))
 	if err != nil {
 		log.Printf("fetch candidates: %v", err)
 		return
-	}
-
-	log.Printf("tick: found %d candidates, %d running, %d claimed",
-		len(candidates), len(o.running), len(o.claimed))
-	for _, issue := range candidates {
-		log.Printf("tick:   candidate %s state=%q claimed=%v", issue.Identifier, issue.State, o.claimed[issue.ID])
 	}
 
 	sort.Slice(candidates, func(i, j int) bool {
@@ -259,6 +249,7 @@ func priorityName(p *int) string {
 
 func (o *Orchestrator) dispatch(ctx context.Context, issue Issue, attempt int) {
 	branch := issueBranch(issue)
+	msBranch := milestoneBranch(issue, o.repoRoot)
 	labels := "none"
 	if len(issue.Labels) > 0 {
 		labels = strings.Join(issue.Labels, ", ")
@@ -277,6 +268,9 @@ func (o *Orchestrator) dispatch(ctx context.Context, issue Issue, attempt int) {
 	log.Printf("[%s]   priority: %s", issue.Identifier, priorityName(issue.Priority))
 	log.Printf("[%s]   labels:   %s", issue.Identifier, labels)
 	log.Printf("[%s]   branch:   %s", issue.Identifier, branch)
+	if msBranch != "" {
+		log.Printf("[%s]   milestone: %s (branch: %s)", issue.Identifier, issue.Milestone, msBranch)
+	}
 	log.Printf("[%s]   url:      %s", issue.Identifier, issue.URL)
 
 	// move to progress status
@@ -300,7 +294,7 @@ func (o *Orchestrator) dispatch(ctx context.Context, issue Issue, attempt int) {
 		logger = NewCommentLogger(o.linear, commentID, commentHeader)
 	}
 
-	workspacePath, err := EnsureWorkspace(issue, o.repoRoot, o.destDir)
+	workspacePath, err := EnsureWorkspace(issue, o.repoRoot, o.destDir, msBranch)
 	if err != nil {
 		log.Printf("[%s] ensure workspace: %v", issue.Identifier, err)
 		return
@@ -312,7 +306,7 @@ func (o *Orchestrator) dispatch(ctx context.Context, issue Issue, attempt int) {
 	}
 
 	attemptPtr := &attempt
-	prompt, err := o.workflow.RenderPrompt(issue, step.Name, attemptPtr)
+	prompt, err := o.workflow.RenderPrompt(issue, step.Name, attemptPtr, msBranch)
 	if err != nil {
 		log.Printf("[%s] render prompt: %v", issue.Identifier, err)
 		return
@@ -327,15 +321,16 @@ func (o *Orchestrator) dispatch(ctx context.Context, issue Issue, attempt int) {
 	}
 
 	entry := &RunEntry{
-		IssueID:    issue.ID,
-		Identifier: issue.Identifier,
-		Issue:      issue,
-		Attempt:    attempt,
-		StepKey:    stepKey,
-		CommentID:  commentID,
-		StartedAt:  time.Now(),
-		Cancel:     cancel,
-		ResultCh:   resultCh,
+		IssueID:         issue.ID,
+		Identifier:      issue.Identifier,
+		Issue:           issue,
+		Attempt:         attempt,
+		StepKey:         stepKey,
+		CommentID:       commentID,
+		MilestoneBranch: msBranch,
+		StartedAt:       time.Now(),
+		Cancel:          cancel,
+		ResultCh:        resultCh,
 	}
 
 	o.running[issue.ID] = entry
