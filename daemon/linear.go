@@ -94,6 +94,7 @@ const issueFields = `
 	state { name }
 	branchName
 	labels { nodes { name } }
+	projectMilestone { name }
 `
 
 type issueNode struct {
@@ -108,18 +109,25 @@ type issueNode struct {
 	State       struct {
 		Name string `json:"name"`
 	} `json:"state"`
-	BranchName string `json:"branchName"`
-	Labels     struct {
+	BranchName       string `json:"branchName"`
+	Labels           struct {
 		Nodes []struct {
 			Name string `json:"name"`
 		} `json:"nodes"`
 	} `json:"labels"`
+	ProjectMilestone *struct {
+		Name string `json:"name"`
+	} `json:"projectMilestone"`
 }
 
 func (n issueNode) toIssue() Issue {
 	labels := make([]string, len(n.Labels.Nodes))
 	for i, l := range n.Labels.Nodes {
 		labels[i] = strings.ToLower(l.Name)
+	}
+	var milestone string
+	if n.ProjectMilestone != nil {
+		milestone = n.ProjectMilestone.Name
 	}
 	return Issue{
 		ID:          n.ID,
@@ -131,6 +139,7 @@ func (n issueNode) toIssue() Issue {
 		BranchName:  n.BranchName,
 		URL:         n.URL,
 		Labels:      labels,
+		Milestone:   milestone,
 		CreatedAt:   n.CreatedAt,
 		UpdatedAt:   n.UpdatedAt,
 	}

@@ -16,21 +16,23 @@ type Issue struct {
 	BranchName  string
 	URL         string
 	Labels      []string
+	Milestone   string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
 
 // RunEntry tracks an active agent run for an issue.
 type RunEntry struct {
-	IssueID    string
-	Identifier string
-	Issue      Issue
-	Attempt    int
-	StepKey    string
-	CommentID  string
-	StartedAt  time.Time
-	Cancel     context.CancelFunc
-	ResultCh   <-chan RunResult
+	IssueID         string
+	Identifier      string
+	Issue           Issue
+	Attempt         int
+	StepKey         string
+	CommentID       string
+	MilestoneBranch string
+	StartedAt       time.Time
+	Cancel          context.CancelFunc
+	ResultCh        <-chan RunResult
 }
 
 // RetryEntry tracks a pending retry for a failed run.

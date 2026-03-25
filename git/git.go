@@ -41,6 +41,11 @@ func CreateBranch(repoRoot, name string) error {
 	return run(repoRoot, "branch", name)
 }
 
+// CreateBranchFrom creates a new branch from a specific base branch.
+func CreateBranchFrom(repoRoot, name, base string) error {
+	return run(repoRoot, "branch", name, base)
+}
+
 // DeleteBranch deletes a branch.
 func DeleteBranch(repoRoot, name string) error {
 	return run(repoRoot, "branch", "-d", name)
