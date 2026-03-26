@@ -62,7 +62,7 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 	o.viewerID = viewerID
 	log.Printf("authenticated as user %s", viewerID)
 
-	o.startupCleanup()
+	o.cleanupTerminal()
 
 	o.tick(ctx)
 
@@ -101,11 +101,11 @@ func (o *Orchestrator) issueFilter(states []string) IssueFilter {
 	}
 }
 
-func (o *Orchestrator) startupCleanup() {
+func (o *Orchestrator) cleanupTerminal() {
 	cfg := o.workflow.Config.Tracker
 	issues, err := o.linear.FetchIssues(o.issueFilter(cfg.TerminalStates))
 	if err != nil {
-		log.Printf("startup cleanup: fetch terminal issues: %v", err)
+		log.Printf("cleanup: fetch terminal issues: %v", err)
 		return
 	}
 
@@ -132,6 +132,7 @@ func (o *Orchestrator) tick(ctx context.Context) {
 	}
 
 	o.reconcile(ctx)
+	o.cleanupTerminal()
 
 	cfg := o.workflow.Config.Tracker
 	candidates, err := o.linear.FetchIssues(o.issueFilter(cfg.ActiveStates()))
