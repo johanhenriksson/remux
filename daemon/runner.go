@@ -81,6 +81,7 @@ func LaunchAgent(ctx context.Context, issue Issue, agentCmd, prompt, workspacePa
 	cmd := exec.CommandContext(ctx, parts[0], parts[1:]...)
 	cmd.Dir = workspacePath
 	cmd.Stderr = os.Stderr
+	cmd.Env = agentEnv(workspacePath)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -268,6 +269,26 @@ func CleanupWorkspace(issue Issue, repoRoot, destDir string) {
 	if err := spaces.Drop(worktreePath, true); err != nil {
 		log.Printf("[%s] cleanup workspace: %v", issue.Identifier, err)
 	}
+}
+
+// agentEnv returns the environment for the agent subprocess,
+// merging the current process env with .remux.yaml env vars.
+func agentEnv(workspacePath string) []string {
+	env := os.Environ()
+	space, err := spaces.Open(workspacePath)
+	if err != nil {
+		log.Printf("open space for env: %v (using inherited env)", err)
+		return env
+	}
+	resolved, err := space.ResolveEnv()
+	if err != nil {
+		log.Printf("resolve space env: %v (using inherited env)", err)
+		return env
+	}
+	for key, value := range resolved {
+		env = append(env, fmt.Sprintf("%s=%s", key, value))
+	}
+	return env
 }
 
 // milestoneBranch returns the branch name for a milestone if one exists.

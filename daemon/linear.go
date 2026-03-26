@@ -95,6 +95,7 @@ const issueFields = `
 	branchName
 	labels { nodes { name } }
 	projectMilestone { name }
+	creator { id }
 `
 
 type issueNode struct {
@@ -118,6 +119,9 @@ type issueNode struct {
 	ProjectMilestone *struct {
 		Name string `json:"name"`
 	} `json:"projectMilestone"`
+	Creator *struct {
+		ID string `json:"id"`
+	} `json:"creator"`
 }
 
 func (n issueNode) toIssue() Issue {
@@ -128,6 +132,10 @@ func (n issueNode) toIssue() Issue {
 	var milestone string
 	if n.ProjectMilestone != nil {
 		milestone = n.ProjectMilestone.Name
+	}
+	var creatorID string
+	if n.Creator != nil {
+		creatorID = n.Creator.ID
 	}
 	return Issue{
 		ID:          n.ID,
@@ -140,6 +148,7 @@ func (n issueNode) toIssue() Issue {
 		URL:         n.URL,
 		Labels:      labels,
 		Milestone:   milestone,
+		CreatorID:   creatorID,
 		CreatedAt:   n.CreatedAt,
 		UpdatedAt:   n.UpdatedAt,
 	}
@@ -151,6 +160,7 @@ type IssueFilter struct {
 	States      []string
 	Labels      []string // if non-empty, filter issues that have all these labels
 	AssigneeID  string   // if non-empty, filter by assignee user ID
+	CreatorID   string   // if non-empty, filter by creator user ID
 }
 
 // FetchIssues returns issues matching the given filter.
@@ -179,6 +189,11 @@ func (c *LinearClient) FetchIssues(filter IssueFilter) ([]Issue, error) {
 		varDecls = append(varDecls, "$assigneeId: ID!")
 		filterClauses = append(filterClauses, "assignee: { id: { eq: $assigneeId } }")
 		vars["assigneeId"] = filter.AssigneeID
+	}
+	if filter.CreatorID != "" {
+		varDecls = append(varDecls, "$creatorId: ID!")
+		filterClauses = append(filterClauses, "creator: { id: { eq: $creatorId } }")
+		vars["creatorId"] = filter.CreatorID
 	}
 
 	query := fmt.Sprintf(`

@@ -17,6 +17,7 @@ type Issue struct {
 	URL         string
 	Labels      []string
 	Milestone   string
+	CreatorID   string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
