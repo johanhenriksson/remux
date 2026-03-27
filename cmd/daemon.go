@@ -13,6 +13,7 @@ import (
 )
 
 var daemonPathDir string
+var daemonDebug bool
 
 var daemonCmd = &cobra.Command{
 	Use:   "daemon [workflow-file]",
@@ -24,6 +25,7 @@ var daemonCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(daemonCmd)
 	daemonCmd.Flags().StringVar(&daemonPathDir, "path", "", "worktree directory (default: ~/.remux)")
+	daemonCmd.Flags().BoolVar(&daemonDebug, "debug", false, "enable verbose debug logging")
 }
 
 func runDaemon(cmd *cobra.Command, args []string) error {
@@ -60,6 +62,6 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		cancel()
 	}()
 
-	orch := daemon.New(workflowPath, repoRoot, destDir)
+	orch := daemon.New(workflowPath, repoRoot, destDir, daemonDebug)
 	return orch.Run(ctx)
 }
