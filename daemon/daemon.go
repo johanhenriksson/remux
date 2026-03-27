@@ -18,6 +18,7 @@ type Orchestrator struct {
 	workflowPath string
 	repoRoot     string
 	destDir      string
+	debug        bool
 
 	workflow *Workflow
 	linear   *LinearClient
@@ -32,11 +33,12 @@ type Orchestrator struct {
 }
 
 // New creates a new Orchestrator.
-func New(workflowPath, repoRoot, destDir string) *Orchestrator {
+func New(workflowPath, repoRoot, destDir string, debug bool) *Orchestrator {
 	return &Orchestrator{
 		workflowPath: workflowPath,
 		repoRoot:     repoRoot,
 		destDir:      destDir,
+		debug:        debug,
 		running:      make(map[string]*RunEntry),
 		claimed:      make(map[string]bool),
 		retries:      make(map[string]*RetryEntry),
@@ -45,15 +47,24 @@ func New(workflowPath, repoRoot, destDir string) *Orchestrator {
 	}
 }
 
+func (o *Orchestrator) debugf(format string, args ...any) {
+	if o.debug {
+		log.Printf("[DEBUG] "+format, args...)
+	}
+}
+
 // Run starts the orchestrator loop. Blocks until ctx is cancelled.
 func (o *Orchestrator) Run(ctx context.Context) error {
+	o.debugf("loading workflow from %s", o.workflowPath)
 	wf, err := LoadWorkflow(o.workflowPath)
 	if err != nil {
 		return fmt.Errorf("load workflow: %w", err)
 	}
 	o.workflow = wf
+	o.debugf("workflow loaded: %d steps, project=%s", len(wf.Config.Tracker.Steps), wf.Config.Tracker.ProjectSlug)
 
-	o.linear = NewLinearClient(wf.Config.Tracker.Endpoint, wf.Config.Tracker.APIKey)
+	o.linear = NewLinearClient(wf.Config.Tracker.Endpoint, wf.Config.Tracker.APIKey, o.debug)
+	o.debugf("linear client: endpoint=%s", wf.Config.Tracker.Endpoint)
 
 	viewerID, err := o.linear.FetchViewerID()
 	if err != nil {
@@ -103,11 +114,13 @@ func (o *Orchestrator) issueFilter(states []string) IssueFilter {
 
 func (o *Orchestrator) cleanupTerminal() {
 	cfg := o.workflow.Config.Tracker
+	o.debugf("cleanup: fetching issues in terminal states %v", cfg.TerminalStates)
 	issues, err := o.linear.FetchIssues(o.issueFilter(cfg.TerminalStates))
 	if err != nil {
 		log.Printf("cleanup: fetch terminal issues: %v", err)
 		return
 	}
+	o.debugf("cleanup: found %d terminal issues", len(issues))
 
 	for _, issue := range issues {
 		branch := issueBranch(issue)
@@ -118,28 +131,34 @@ func (o *Orchestrator) cleanupTerminal() {
 		if _, statErr := os.Stat(worktreePath); statErr == nil {
 			log.Printf("[%s] cleaning up terminal workspace", issue.Identifier)
 			CleanupWorkspace(issue, o.repoRoot, o.destDir)
+		} else {
+			o.debugf("[%s] no workspace at %s, skipping cleanup", issue.Identifier, worktreePath)
 		}
 	}
 }
 
 func (o *Orchestrator) tick(ctx context.Context) {
+	o.debugf("tick: reloading workflow")
 	wf, err := LoadWorkflow(o.workflowPath)
 	if err != nil {
 		log.Printf("reload workflow: %v (keeping last good config)", err)
 	} else {
 		o.workflow = wf
-		o.linear = NewLinearClient(wf.Config.Tracker.Endpoint, wf.Config.Tracker.APIKey)
+		o.linear = NewLinearClient(wf.Config.Tracker.Endpoint, wf.Config.Tracker.APIKey, o.debug)
 	}
 
 	o.reconcile(ctx)
 	o.cleanupTerminal()
 
 	cfg := o.workflow.Config.Tracker
-	candidates, err := o.linear.FetchIssues(o.issueFilter(cfg.ActiveStates()))
+	activeStates := cfg.ActiveStates()
+	o.debugf("tick: fetching candidates in states %v (labels=%v)", activeStates, cfg.Labels)
+	candidates, err := o.linear.FetchIssues(o.issueFilter(activeStates))
 	if err != nil {
 		log.Printf("fetch candidates: %v", err)
 		return
 	}
+	o.debugf("tick: found %d candidates, %d running, %d claimed", len(candidates), len(o.running), len(o.claimed))
 
 	sort.Slice(candidates, func(i, j int) bool {
 		pi, pj := candidates[i].Priority, candidates[j].Priority
@@ -161,6 +180,7 @@ func (o *Orchestrator) tick(ctx context.Context) {
 
 	for _, issue := range candidates {
 		if o.claimed[issue.ID] {
+			o.debugf("tick: %s already claimed, skipping", issue.Identifier)
 			continue
 		}
 		if len(o.running) >= o.workflow.Config.Agent.MaxConcurrent {
@@ -173,6 +193,7 @@ func (o *Orchestrator) tick(ctx context.Context) {
 
 func (o *Orchestrator) reconcile(_ context.Context) {
 	if len(o.running) == 0 {
+		o.debugf("reconcile: no running agents")
 		return
 	}
 
@@ -180,12 +201,14 @@ func (o *Orchestrator) reconcile(_ context.Context) {
 	for id := range o.running {
 		ids = append(ids, id)
 	}
+	o.debugf("reconcile: checking %d running agents", len(ids))
 
 	states, err := o.linear.FetchIssueStatesByIDs(ids)
 	if err != nil {
 		log.Printf("reconcile: fetch states: %v (keeping running)", err)
 		return
 	}
+	o.debugf("reconcile: fetched states for %d issues", len(states))
 
 	cfg := o.workflow.Config.Tracker
 	terminalSet := make(map[string]bool, len(cfg.TerminalStates))
@@ -296,7 +319,6 @@ func (o *Orchestrator) dispatch(ctx context.Context, issue Issue, attempt int) {
 		logger = NewCommentLogger(o.linear, commentID, commentHeader)
 	}
 
-	// revertStatus reverts the issue back to its trigger status on dispatch failure.
 	revertStatus := func() {
 		if step.ProgressStatus != "" {
 			if err := o.linear.UpdateIssueState(issue.ID, step.TriggerStatus); err != nil {
@@ -307,12 +329,14 @@ func (o *Orchestrator) dispatch(ctx context.Context, issue Issue, attempt int) {
 		}
 	}
 
+	o.debugf("[%s] ensuring workspace (base=%q)", issue.Identifier, msBranch)
 	workspacePath, err := EnsureWorkspace(issue, o.repoRoot, o.destDir, msBranch)
 	if err != nil {
 		log.Printf("[%s] ensure workspace: %v", issue.Identifier, err)
 		revertStatus()
 		return
 	}
+	o.debugf("[%s] workspace at %s", issue.Identifier, workspacePath)
 
 	if err := EnsureSession(workspacePath, o.destDir); err != nil {
 		log.Printf("[%s] ensure session: %v", issue.Identifier, err)
@@ -327,8 +351,10 @@ func (o *Orchestrator) dispatch(ctx context.Context, issue Issue, attempt int) {
 		revertStatus()
 		return
 	}
+	o.debugf("[%s] rendered prompt (%d bytes)", issue.Identifier, len(prompt))
 
 	runCtx, cancel := context.WithCancel(ctx)
+	o.debugf("[%s] launching agent: %s", issue.Identifier, o.workflow.Config.Agent.Command)
 	resultCh, err := LaunchAgent(runCtx, issue, o.workflow.Config.Agent.Command, prompt, workspacePath, logger)
 	if err != nil {
 		cancel()
@@ -362,9 +388,11 @@ func (o *Orchestrator) dispatch(ctx context.Context, issue Issue, attempt int) {
 func (o *Orchestrator) handleResult(_ context.Context, result RunResult) {
 	entry, ok := o.running[result.IssueID]
 	if !ok {
+		o.debugf("handleResult: no running entry for %s", result.IssueID)
 		return
 	}
 	delete(o.running, result.IssueID)
+	o.debugf("[%s] handling result: success=%v err=%v", entry.Identifier, result.Success, result.Err)
 
 	if result.Success {
 		log.Printf("[%s] agent completed successfully (attempt %d)", entry.Identifier, entry.Attempt)
@@ -429,9 +457,11 @@ func (o *Orchestrator) scheduleRetry(issueID, identifier string, attempt int, de
 func (o *Orchestrator) handleRetry(ctx context.Context, issueID string) {
 	retry, ok := o.retries[issueID]
 	if !ok {
+		o.debugf("handleRetry: no retry entry for %s", issueID)
 		return
 	}
 	delete(o.retries, issueID)
+	o.debugf("[%s] processing retry (attempt %d)", retry.Identifier, retry.Attempt)
 
 	cfg := o.workflow.Config.Tracker
 	candidates, err := o.linear.FetchIssues(o.issueFilter(cfg.ActiveStates()))

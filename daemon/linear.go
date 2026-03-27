@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -15,14 +16,22 @@ type LinearClient struct {
 	endpoint string
 	apiKey   string
 	client   *http.Client
+	debug    bool
+}
+
+func (c *LinearClient) debugf(format string, args ...any) {
+	if c.debug {
+		log.Printf("[DEBUG] "+format, args...)
+	}
 }
 
 // NewLinearClient creates a new Linear API client.
-func NewLinearClient(endpoint, apiKey string) *LinearClient {
+func NewLinearClient(endpoint, apiKey string, debug bool) *LinearClient {
 	return &LinearClient{
 		endpoint: endpoint,
 		apiKey:   apiKey,
 		client:   &http.Client{Timeout: 30 * time.Second},
+		debug:    debug,
 	}
 }
 
@@ -51,6 +60,8 @@ func (c *LinearClient) do(query string, variables any) (json.RawMessage, error) 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", c.apiKey)
 
+	c.debugf("graphql request: %s", firstQueryLine(query))
+
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("http request: %w", err)
@@ -61,6 +72,7 @@ func (c *LinearClient) do(query string, variables any) (json.RawMessage, error) 
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}
+	c.debugf("graphql response: status=%d size=%d", resp.StatusCode, len(respBody))
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("linear API error: status %d: %s", resp.StatusCode, string(respBody))
@@ -80,6 +92,14 @@ func (c *LinearClient) do(query string, variables any) (json.RawMessage, error) 
 	}
 
 	return gqlResp.Data, nil
+}
+
+func firstQueryLine(q string) string {
+	q = strings.TrimSpace(q)
+	if idx := strings.IndexByte(q, '{'); idx >= 0 {
+		q = strings.TrimSpace(q[:idx+1]) + "..."
+	}
+	return q
 }
 
 const issueFields = `
@@ -239,11 +259,13 @@ func (c *LinearClient) FetchIssues(filter IssueFilter) ([]Issue, error) {
 		for _, n := range result.Issues.Nodes {
 			allIssues = append(allIssues, n.toIssue())
 		}
+		c.debugf("fetch issues: page returned %d issues (total so far: %d)", len(result.Issues.Nodes), len(allIssues))
 
 		if !result.Issues.PageInfo.HasNextPage {
 			break
 		}
 		cursor = &result.Issues.PageInfo.EndCursor
+		c.debugf("fetch issues: fetching next page (cursor=%s)", *cursor)
 	}
 
 	return allIssues, nil
