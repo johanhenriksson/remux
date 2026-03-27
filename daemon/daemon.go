@@ -108,7 +108,6 @@ func (o *Orchestrator) issueFilter(states []string) IssueFilter {
 		States:      states,
 		Labels:      cfg.Labels,
 		AssigneeID:  o.viewerID,
-		CreatorID:   o.viewerID,
 	}
 }
 

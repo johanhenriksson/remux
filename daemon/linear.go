@@ -180,7 +180,6 @@ type IssueFilter struct {
 	States      []string
 	Labels      []string // if non-empty, filter issues that have all these labels
 	AssigneeID  string   // if non-empty, filter by assignee user ID
-	CreatorID   string   // if non-empty, filter by creator user ID
 }
 
 // FetchIssues returns issues matching the given filter.
@@ -210,12 +209,6 @@ func (c *LinearClient) FetchIssues(filter IssueFilter) ([]Issue, error) {
 		filterClauses = append(filterClauses, "assignee: { id: { eq: $assigneeId } }")
 		vars["assigneeId"] = filter.AssigneeID
 	}
-	if filter.CreatorID != "" {
-		varDecls = append(varDecls, "$creatorId: ID!")
-		filterClauses = append(filterClauses, "creator: { id: { eq: $creatorId } }")
-		vars["creatorId"] = filter.CreatorID
-	}
-
 	query := fmt.Sprintf(`
 		query(%s) {
 			issues(
