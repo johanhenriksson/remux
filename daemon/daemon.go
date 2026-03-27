@@ -296,14 +296,27 @@ func (o *Orchestrator) dispatch(ctx context.Context, issue Issue, attempt int) {
 		logger = NewCommentLogger(o.linear, commentID, commentHeader)
 	}
 
+	// revertStatus reverts the issue back to its trigger status on dispatch failure.
+	revertStatus := func() {
+		if step.ProgressStatus != "" {
+			if err := o.linear.UpdateIssueState(issue.ID, step.TriggerStatus); err != nil {
+				log.Printf("[%s] revert to trigger status %q: %v", issue.Identifier, step.TriggerStatus, err)
+			} else {
+				log.Printf("[%s] reverted to %q", issue.Identifier, step.TriggerStatus)
+			}
+		}
+	}
+
 	workspacePath, err := EnsureWorkspace(issue, o.repoRoot, o.destDir, msBranch)
 	if err != nil {
 		log.Printf("[%s] ensure workspace: %v", issue.Identifier, err)
+		revertStatus()
 		return
 	}
 
 	if err := EnsureSession(workspacePath, o.destDir); err != nil {
 		log.Printf("[%s] ensure session: %v", issue.Identifier, err)
+		revertStatus()
 		return
 	}
 
@@ -311,6 +324,7 @@ func (o *Orchestrator) dispatch(ctx context.Context, issue Issue, attempt int) {
 	prompt, err := o.workflow.RenderPrompt(issue, step.Name, attemptPtr, msBranch)
 	if err != nil {
 		log.Printf("[%s] render prompt: %v", issue.Identifier, err)
+		revertStatus()
 		return
 	}
 
@@ -319,6 +333,7 @@ func (o *Orchestrator) dispatch(ctx context.Context, issue Issue, attempt int) {
 	if err != nil {
 		cancel()
 		log.Printf("[%s] launch agent: %v", issue.Identifier, err)
+		revertStatus()
 		return
 	}
 
@@ -372,6 +387,17 @@ func (o *Orchestrator) handleResult(_ context.Context, result RunResult) {
 		delete(o.claimed, result.IssueID)
 	} else {
 		log.Printf("[%s] agent failed (attempt %d): %v", entry.Identifier, entry.Attempt, result.Err)
+
+		// revert issue status back to trigger status so it remains eligible for retry
+		step, ok := o.workflow.Config.Tracker.Steps[entry.StepKey]
+		if ok && step.ProgressStatus != "" {
+			if err := o.linear.UpdateIssueState(entry.Issue.ID, step.TriggerStatus); err != nil {
+				log.Printf("[%s] revert to trigger status %q: %v", entry.Identifier, step.TriggerStatus, err)
+			} else {
+				log.Printf("[%s] reverted to %q", entry.Identifier, step.TriggerStatus)
+			}
+		}
+
 		delay := retryDelay(entry.Attempt, o.workflow.Config.Agent.MaxRetryBackoff)
 		o.scheduleRetry(entry.IssueID, entry.Identifier, entry.Attempt+1, delay, result.Err)
 	}
