@@ -354,7 +354,7 @@ func (o *Orchestrator) dispatch(ctx context.Context, issue Issue, attempt int) {
 
 	runCtx, cancel := context.WithCancel(ctx)
 	o.debugf("[%s] launching agent: %s", issue.Identifier, o.workflow.Config.Agent.Command)
-	resultCh, err := LaunchAgent(runCtx, issue, o.workflow.Config.Agent.Command, prompt, workspacePath, logger)
+	resultCh, err := LaunchAgent(runCtx, issue, o.workflow.Config.Agent.Command, prompt, workspacePath, o.workflow.Config.Agent.IdleTimeout, logger)
 	if err != nil {
 		cancel()
 		log.Printf("[%s] launch agent: %v", issue.Identifier, err)
