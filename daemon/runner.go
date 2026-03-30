@@ -69,7 +69,7 @@ func EnsureSession(workspacePath, destDir string) error {
 // Parses stream-json output for logging. Returns a channel that receives the
 // result when the process exits. If logger is non-nil, text output is streamed
 // to the Linear comment.
-func LaunchAgent(ctx context.Context, issue Issue, agentCmd, prompt, workspacePath string, logger *CommentLogger) (<-chan RunResult, error) {
+func LaunchAgent(ctx context.Context, issue Issue, agentCmd, prompt, workspacePath string, idleTimeout time.Duration, logger *CommentLogger) (<-chan RunResult, error) {
 	promptPath := filepath.Join(workspacePath, ".remux-prompt.md")
 	if err := os.WriteFile(promptPath, []byte(prompt), 0644); err != nil {
 		return nil, fmt.Errorf("write prompt file: %w", err)
@@ -78,30 +78,51 @@ func LaunchAgent(ctx context.Context, issue Issue, agentCmd, prompt, workspacePa
 	parts := strings.Fields(agentCmd)
 	parts = append(parts, "--output-format", "stream-json", "--verbose", "-p", prompt)
 
-	cmd := exec.CommandContext(ctx, parts[0], parts[1:]...)
+	idleCtx, idleCancel := context.WithCancelCause(ctx)
+
+	cmd := exec.CommandContext(idleCtx, parts[0], parts[1:]...)
 	cmd.Dir = workspacePath
 	cmd.Stderr = os.Stderr
 	cmd.Env = agentEnv(workspacePath)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		idleCancel(nil)
 		return nil, fmt.Errorf("stdout pipe: %w", err)
 	}
 
 	if err := cmd.Start(); err != nil {
+		idleCancel(nil)
 		return nil, fmt.Errorf("start agent: %w", err)
 	}
 
 	log.Printf("[%s] agent process started (pid %d)", issue.Identifier, cmd.Process.Pid)
 
+	var idleTimer *time.Timer
+	if idleTimeout > 0 {
+		idleTimer = time.AfterFunc(idleTimeout, func() {
+			log.Printf("[%s] agent idle for %s, aborting", issue.Identifier, idleTimeout)
+			idleCancel(fmt.Errorf("idle timeout (%s)", idleTimeout))
+		})
+	}
+
 	resultCh := make(chan RunResult, 1)
 	go func() {
+		defer idleCancel(nil)
+
 		prefix := fmt.Sprintf("[%s]", issue.Identifier)
 		scanner := bufio.NewScanner(stdout)
 		scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 
 		for scanner.Scan() {
+			if idleTimer != nil {
+				idleTimer.Reset(idleTimeout)
+			}
 			processStreamLine(prefix, scanner.Bytes(), logger)
+		}
+
+		if idleTimer != nil {
+			idleTimer.Stop()
 		}
 
 		if logger != nil {
@@ -109,8 +130,9 @@ func LaunchAgent(ctx context.Context, issue Issue, agentCmd, prompt, workspacePa
 		}
 
 		err := cmd.Wait()
-		if ctx.Err() != nil {
-			resultCh <- RunResult{IssueID: issue.ID, Success: false, Err: ctx.Err()}
+		if idleCtx.Err() != nil {
+			cause := context.Cause(idleCtx)
+			resultCh <- RunResult{IssueID: issue.ID, Success: false, Err: cause}
 		} else if err != nil {
 			resultCh <- RunResult{IssueID: issue.ID, Success: false, Err: fmt.Errorf("agent exited: %w", err)}
 		} else {

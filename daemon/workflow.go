@@ -63,6 +63,7 @@ type AgentConfig struct {
 	Command         string
 	MaxConcurrent   int
 	MaxRetryBackoff time.Duration
+	IdleTimeout     time.Duration
 }
 
 // Workflow represents a parsed WORKFLOW.md file.
@@ -155,6 +156,7 @@ func parseConfig(fm map[string]any) (WorkflowConfig, error) {
 			Command:         "claude --dangerously-skip-permissions",
 			MaxConcurrent:   3,
 			MaxRetryBackoff: 5 * time.Minute,
+			IdleTimeout:     15 * time.Minute,
 		},
 	}
 
@@ -224,6 +226,9 @@ func parseConfig(fm map[string]any) (WorkflowConfig, error) {
 		}
 		if v, ok := toInt(agent["max_retry_backoff_ms"]); ok {
 			cfg.Agent.MaxRetryBackoff = time.Duration(v) * time.Millisecond
+		}
+		if v, ok := toInt(agent["idle_timeout"]); ok {
+			cfg.Agent.IdleTimeout = time.Duration(v) * time.Minute
 		}
 	}
 
