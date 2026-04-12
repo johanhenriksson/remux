@@ -222,6 +222,9 @@ func (o *Orchestrator) reconcile(_ context.Context) {
 		if step.ProgressStatus != "" {
 			validRunning[strings.ToLower(step.ProgressStatus)] = true
 		}
+		for _, ns := range step.NextStatus {
+			validRunning[strings.ToLower(ns)] = true
+		}
 	}
 
 	for id, entry := range o.running {
@@ -401,14 +404,34 @@ func (o *Orchestrator) handleResult(_ context.Context, result RunResult) {
 		if !ok {
 			log.Printf("[%s] stepKey %q not found in current workflow config", entry.Identifier, entry.StepKey)
 		}
-		if ok && step.NextStatus != "" {
-			if err := o.linear.UpdateIssueState(entry.Issue.ID, step.NextStatus); err != nil {
-				log.Printf("[%s] update to next status %q: %v", entry.Identifier, step.NextStatus, err)
+		if ok && len(step.NextStatus) > 0 {
+			currentState := entry.Issue.State
+			if states, err := o.linear.FetchIssueStatesByIDs([]string{entry.Issue.ID}); err == nil {
+				if s, found := states[entry.Issue.ID]; found {
+					currentState = s
+				}
+			}
+
+			alreadyInNext := false
+			for _, ns := range step.NextStatus {
+				if strings.EqualFold(currentState, ns) {
+					alreadyInNext = true
+					break
+				}
+			}
+
+			if alreadyInNext {
+				log.Printf("[%s] already in desired status %q, skipping transition", entry.Identifier, currentState)
 			} else {
-				log.Printf("[%s] moved to %q", entry.Identifier, step.NextStatus)
+				target := step.NextStatus[0]
+				if err := o.linear.UpdateIssueState(entry.Issue.ID, target); err != nil {
+					log.Printf("[%s] update to next status %q: %v", entry.Identifier, target, err)
+				} else {
+					log.Printf("[%s] moved to %q", entry.Identifier, target)
+				}
 			}
 		} else {
-			log.Printf("[%s] no next status transition (found=%v, nextStatus=%q)", entry.Identifier, ok, step.NextStatus)
+			log.Printf("[%s] no next status transition (found=%v, nextStatus=%v)", entry.Identifier, ok, step.NextStatus)
 		}
 
 		delete(o.claimed, result.IssueID)

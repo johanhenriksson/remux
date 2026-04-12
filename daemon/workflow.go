@@ -15,7 +15,7 @@ import (
 type WorkflowStep struct {
 	Name           string // display name for this step
 	TriggerStatus  string // linear state name that triggers this step
-	NextStatus     string // where to move on success
+	NextStatus     []string // where to move on success (first match wins)
 	ProgressStatus string // where to move when work starts
 }
 
@@ -195,8 +195,11 @@ func parseConfig(fm map[string]any) (WorkflowConfig, error) {
 			if v, ok := stepMap["trigger_status"].(string); ok {
 				step.TriggerStatus = v
 			}
-			if v, ok := stepMap["next_status"].(string); ok {
-				step.NextStatus = v
+			switch v := stepMap["next_status"].(type) {
+			case string:
+				step.NextStatus = []string{v}
+			case []any:
+				step.NextStatus = toStringSlice(v)
 			}
 			if v, ok := stepMap["progress_status"].(string); ok {
 				step.ProgressStatus = v

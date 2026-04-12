@@ -77,11 +77,11 @@ You are working on issue {{.Identifier}}: {{.Title}}
 		t.Fatalf("steps = %d, want 2", len(wf.Config.Tracker.Steps))
 	}
 	todo := wf.Config.Tracker.Steps["todo"]
-	if todo.TriggerStatus != "Todo" || todo.NextStatus != "Planned" || todo.ProgressStatus != "In Progress" {
+	if todo.TriggerStatus != "Todo" || len(todo.NextStatus) != 1 || todo.NextStatus[0] != "Planned" || todo.ProgressStatus != "In Progress" {
 		t.Errorf("todo step = %+v", todo)
 	}
 	ready := wf.Config.Tracker.Steps["ready"]
-	if ready.TriggerStatus != "Ready" || ready.NextStatus != "Review" || ready.ProgressStatus != "In Progress" {
+	if ready.TriggerStatus != "Ready" || len(ready.NextStatus) != 1 || ready.NextStatus[0] != "Review" || ready.ProgressStatus != "In Progress" {
 		t.Errorf("ready step = %+v", ready)
 	}
 
@@ -128,13 +128,13 @@ func TestActiveStates(t *testing.T) {
 func TestStepForState(t *testing.T) {
 	tc := TrackerConfig{
 		Steps: map[string]WorkflowStep{
-			"todo":  {TriggerStatus: "Todo", NextStatus: "Planned", ProgressStatus: "In Progress"},
-			"ready": {TriggerStatus: "Ready", NextStatus: "Review", ProgressStatus: "In Progress"},
+			"todo":  {TriggerStatus: "Todo", NextStatus: []string{"Planned"}, ProgressStatus: "In Progress"},
+			"ready": {TriggerStatus: "Ready", NextStatus: []string{"Review"}, ProgressStatus: "In Progress"},
 		},
 	}
 
 	key, step, ok := tc.StepForState("Todo")
-	if !ok || key != "todo" || step.NextStatus != "Planned" {
+	if !ok || key != "todo" || len(step.NextStatus) != 1 || step.NextStatus[0] != "Planned" {
 		t.Errorf("StepForState(Todo) = %q, %+v, %v", key, step, ok)
 	}
 
@@ -147,6 +147,33 @@ func TestStepForState(t *testing.T) {
 	_, _, ok = tc.StepForState("Unknown")
 	if ok {
 		t.Error("StepForState(Unknown) should return false")
+	}
+}
+
+func TestLoadWorkflowNextStatusList(t *testing.T) {
+	content := `---
+tracker:
+  api_key: $LINEAR_API_KEY
+  project_slug: test-project
+workflow:
+  implement:
+    trigger_status: Todo
+    next_status: ["Review", "Ready"]
+    progress_status: In Progress
+---
+Do work on {{.Identifier}}
+`
+	t.Setenv("LINEAR_API_KEY", "key")
+	path := writeWorkflow(t, content)
+
+	wf, err := LoadWorkflow(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	step := wf.Config.Tracker.Steps["implement"]
+	if len(step.NextStatus) != 2 || step.NextStatus[0] != "Review" || step.NextStatus[1] != "Ready" {
+		t.Errorf("next_status = %v, want [Review Ready]", step.NextStatus)
 	}
 }
 
