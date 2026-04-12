@@ -76,7 +76,7 @@ func LaunchAgent(ctx context.Context, issue Issue, agentCmd, prompt, workspacePa
 	}
 
 	parts := strings.Fields(agentCmd)
-	parts = append(parts, "--output-format", "stream-json", "--verbose", "-p", prompt)
+	parts = append(parts, "--output-format", "stream-json", "--verbose", "--remote-control", issue.Identifier, "-p", prompt)
 
 	idleCtx, idleCancel := context.WithCancelCause(ctx)
 
