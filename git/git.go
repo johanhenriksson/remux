@@ -1,6 +1,7 @@
 package git
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,6 +21,39 @@ func FindRoot() (string, error) {
 func BranchExists(repoRoot, name string) bool {
 	cmd := exec.Command("git", "-C", repoRoot, "show-ref", "--verify", "--quiet", "refs/heads/"+name)
 	return cmd.Run() == nil
+}
+
+// DefaultBranch returns the repository's default branch name. It first tries
+// refs/remotes/origin/HEAD; if that symbolic ref is unset, it falls back to
+// probing common defaults (main, master) on the origin remote.
+func DefaultBranch(repoRoot string) (string, error) {
+	out, err := exec.Command("git", "-C", repoRoot, "symbolic-ref", "--short", "refs/remotes/origin/HEAD").Output()
+	if err == nil {
+		ref := strings.TrimSpace(string(out))
+		return strings.TrimPrefix(ref, "origin/"), nil
+	}
+
+	for _, candidate := range []string{"main", "master"} {
+		if remoteBranchExists(repoRoot, candidate) {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("could not determine default branch: origin/HEAD unset and no common default (main, master) found on origin")
+}
+
+// remoteBranchExists checks whether refs/remotes/origin/<name> exists locally.
+func remoteBranchExists(repoRoot, name string) bool {
+	cmd := exec.Command("git", "-C", repoRoot, "show-ref", "--verify", "--quiet", "refs/remotes/origin/"+name)
+	return cmd.Run() == nil
+}
+
+// ResolveBase returns a ref usable as a base for creating new branches: the
+// local branch name if it exists, otherwise the origin/-prefixed remote ref.
+func ResolveBase(repoRoot, branch string) string {
+	if BranchExists(repoRoot, branch) {
+		return branch
+	}
+	return "origin/" + branch
 }
 
 // run runs a git command in the specified repository.
