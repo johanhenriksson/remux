@@ -56,12 +56,13 @@ func EnsureWorkspace(issue Issue, repoRoot, destDir, baseBranch string) (string,
 // EnsureSession opens the tmux session for the workspace (detached) so that
 // configured tabs (dev servers, etc.) are running. Safe to call if session
 // already exists.
-func EnsureSession(workspacePath, destDir string) error {
+func EnsureSession(workspacePath, destDir string, envVars map[string]string) error {
 	name := filepath.Base(workspacePath)
 	return spaces.OpenSession(spaces.OpenSessionOptions{
 		DestDir: destDir,
 		Name:    name,
 		Detach:  true,
+		EnvVars: envVars,
 	})
 }
 
@@ -69,14 +70,24 @@ func EnsureSession(workspacePath, destDir string) error {
 // Parses stream-json output for logging. Returns a channel that receives the
 // result when the process exits. If logger is non-nil, text output is streamed
 // to the Linear comment.
-func LaunchAgent(ctx context.Context, issue Issue, agentCmd, prompt, workspacePath string, idleTimeout time.Duration, logger *CommentLogger) (<-chan RunResult, error) {
+func LaunchAgent(ctx context.Context, issue Issue, agentCmd, prompt, workspacePath, sessionID, sessionName string, idleTimeout time.Duration, logger *CommentLogger) (<-chan RunResult, error) {
 	promptPath := filepath.Join(workspacePath, ".remux-prompt.md")
 	if err := os.WriteFile(promptPath, []byte(prompt), 0644); err != nil {
 		return nil, fmt.Errorf("write prompt file: %w", err)
 	}
 
 	parts := strings.Fields(agentCmd)
-	parts = append(parts, "--output-format", "stream-json", "--verbose", "--remote-control", issue.Identifier, "-p", prompt)
+	parts = append(parts, "--output-format", "stream-json", "--verbose", "--remote-control", issue.Identifier)
+	if sessionID != "" {
+		parts = append(parts, "--session-id", sessionID)
+	}
+	if sessionName != "" {
+		parts = append(parts, "--name", sessionName)
+	}
+	if hasLabel(issue.Labels, "max") {
+		parts = append(parts, "--effort", "max")
+	}
+	parts = append(parts, "-p", prompt)
 
 	idleCtx, idleCancel := context.WithCancelCause(ctx)
 
@@ -324,6 +335,15 @@ func milestoneBranch(issue Issue, repoRoot string) string {
 		return branch
 	}
 	return ""
+}
+
+func hasLabel(labels []string, target string) bool {
+	for _, l := range labels {
+		if strings.EqualFold(l, target) {
+			return true
+		}
+	}
+	return false
 }
 
 var ticketPattern = regexp.MustCompile(`^(.*?[a-zA-Z]+-\d+)`)

@@ -340,14 +340,22 @@ func (o *Orchestrator) dispatch(ctx context.Context, issue Issue, attempt int) {
 	}
 	o.debugf("[%s] workspace at %s", issue.Identifier, workspacePath)
 
-	if err := EnsureSession(workspacePath, o.destDir); err != nil {
+	sessionID, err := newUUID()
+	if err != nil {
+		log.Printf("[%s] generate session id: %v", issue.Identifier, err)
+		revertStatus()
+		return
+	}
+	sessionName := fmt.Sprintf("%s %s", issue.Identifier, issue.State)
+
+	if err := EnsureSession(workspacePath, o.destDir, map[string]string{"REMUX_SESSION_ID": sessionID}); err != nil {
 		log.Printf("[%s] ensure session: %v", issue.Identifier, err)
 		revertStatus()
 		return
 	}
 
 	attemptPtr := &attempt
-	prompt, err := o.workflow.RenderPrompt(issue, step.Name, attemptPtr, msBranch)
+	prompt, err := o.workflow.RenderPrompt(issue, step.Name, attemptPtr, msBranch, sessionID)
 	if err != nil {
 		log.Printf("[%s] render prompt: %v", issue.Identifier, err)
 		revertStatus()
@@ -357,7 +365,7 @@ func (o *Orchestrator) dispatch(ctx context.Context, issue Issue, attempt int) {
 
 	runCtx, cancel := context.WithCancel(ctx)
 	o.debugf("[%s] launching agent: %s", issue.Identifier, o.workflow.Config.Agent.Command)
-	resultCh, err := LaunchAgent(runCtx, issue, o.workflow.Config.Agent.Command, prompt, workspacePath, o.workflow.Config.Agent.IdleTimeout, logger)
+	resultCh, err := LaunchAgent(runCtx, issue, o.workflow.Config.Agent.Command, prompt, workspacePath, sessionID, sessionName, o.workflow.Config.Agent.IdleTimeout, logger)
 	if err != nil {
 		cancel()
 		log.Printf("[%s] launch agent: %v", issue.Identifier, err)
