@@ -95,12 +95,8 @@ Implement the plan for this issue. Read any comments on the issue for the plan a
 3. Run tests iteratively: code, test, fix, repeat until all tests pass
 4. Commit your changes with a clear commit message referencing {{.Identifier}}
 5. Push the branch: `git push -u origin {{.BranchName}}`
-   {{- if .MilestoneBranch}}
-6. Open a PR: `gh pr create --base {{.MilestoneBranch}} --head {{.BranchName}} --title "{{.Identifier}}: {{.Title}}" --body "Resolves {{.Identifier}}"`
-   {{- else}}
-7. Open a PR: `gh pr create --base master --head {{.BranchName}} --title "{{.Identifier}}: {{.Title}}" --body "Resolves {{.Identifier}}"`
-   {{- end}}
-8. Post the PR link as a comment on the Linear issue (use `linear_createComment` with issue ID `{{.ID}}`)
+6. Open a PR: `gh pr create --base {{if .BaseBranch}}{{.BaseBranch}}{{else}}master{{end}} --head {{.BranchName}} --title "{{.Identifier}}: {{.Title}}" --body "Resolves {{.Identifier}}"`
+7. Post the PR link as a comment on the Linear issue (use `linear_createComment` with issue ID `{{.ID}}`)
 
 Make sure all tests pass before opening the PR.
 
@@ -113,5 +109,9 @@ The PR for this issue has been approved. Merge it.
 1. Find the PR for branch `{{.BranchName}}` using `gh pr list --head {{.BranchName}}`
 2. Check for any review comments that need to be addressed
 3. If there are requested changes, address them, push, and wait for approval
-4. Merge the PR: `gh pr merge {{.BranchName}} --rebase --delete-branch`
+4. Rebase onto the latest base branch before merging:
+   - `git fetch origin`
+   - `git rebase origin/{{if .BaseBranch}}{{.BaseBranch}}{{else}}master{{end}}`
+   - Resolve any conflicts, then `git push --force-with-lease`
+5. Merge the PR: `gh pr merge {{.BranchName}} --rebase --delete-branch`
    {{end}}

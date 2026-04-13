@@ -276,7 +276,6 @@ func priorityName(p *int) string {
 
 func (o *Orchestrator) dispatch(ctx context.Context, issue Issue, attempt int) {
 	branch := issueBranch(issue)
-	msBranch := milestoneBranch(issue, o.repoRoot)
 	labels := "none"
 	if len(issue.Labels) > 0 {
 		labels = strings.Join(issue.Labels, ", ")
@@ -295,8 +294,8 @@ func (o *Orchestrator) dispatch(ctx context.Context, issue Issue, attempt int) {
 	log.Printf("[%s]   priority: %s", issue.Identifier, priorityName(issue.Priority))
 	log.Printf("[%s]   labels:   %s", issue.Identifier, labels)
 	log.Printf("[%s]   branch:   %s", issue.Identifier, branch)
-	if msBranch != "" {
-		log.Printf("[%s]   milestone: %s (branch: %s)", issue.Identifier, issue.Milestone, msBranch)
+	if issue.Parent != nil {
+		log.Printf("[%s]   parent:   %s", issue.Identifier, issue.Parent.Identifier)
 	}
 	log.Printf("[%s]   url:      %s", issue.Identifier, issue.URL)
 
@@ -331,8 +330,15 @@ func (o *Orchestrator) dispatch(ctx context.Context, issue Issue, attempt int) {
 		}
 	}
 
-	o.debugf("[%s] ensuring workspace (base=%q)", issue.Identifier, msBranch)
-	workspacePath, err := EnsureWorkspace(issue, o.repoRoot, o.destDir, msBranch)
+	baseBranch, err := parentBranch(issue, o.repoRoot)
+	if err != nil {
+		log.Printf("[%s] resolve parent branch: %v", issue.Identifier, err)
+		revertStatus()
+		return
+	}
+
+	o.debugf("[%s] ensuring workspace (base=%q)", issue.Identifier, baseBranch)
+	workspacePath, err := EnsureWorkspace(issue, o.repoRoot, o.destDir, baseBranch)
 	if err != nil {
 		log.Printf("[%s] ensure workspace: %v", issue.Identifier, err)
 		revertStatus()
@@ -355,7 +361,7 @@ func (o *Orchestrator) dispatch(ctx context.Context, issue Issue, attempt int) {
 	}
 
 	attemptPtr := &attempt
-	prompt, err := o.workflow.RenderPrompt(issue, step.Name, attemptPtr, msBranch, sessionID)
+	prompt, err := o.workflow.RenderPrompt(issue, step.Name, attemptPtr, baseBranch, sessionID)
 	if err != nil {
 		log.Printf("[%s] render prompt: %v", issue.Identifier, err)
 		revertStatus()
@@ -380,7 +386,7 @@ func (o *Orchestrator) dispatch(ctx context.Context, issue Issue, attempt int) {
 		Attempt:         attempt,
 		StepKey:         stepKey,
 		CommentID:       commentID,
-		MilestoneBranch: msBranch,
+		BaseBranch:      baseBranch,
 		StartedAt:       time.Now(),
 		Cancel:          cancel,
 		ResultCh:        resultCh,

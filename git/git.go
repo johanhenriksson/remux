@@ -36,6 +36,13 @@ func Pull(repoRoot string) error {
 	return run(repoRoot, "pull", "--ff-only")
 }
 
+// FetchBranch fetches a specific branch from origin and updates the local ref
+// to match. Creates the local branch if it doesn't exist. Returns an error if
+// the branch doesn't exist on the remote or the fast-forward fails.
+func FetchBranch(repoRoot, branch string) error {
+	return run(repoRoot, "fetch", "origin", branch+":"+branch)
+}
+
 // CreateBranch creates a new branch at the current HEAD.
 func CreateBranch(repoRoot, name string) error {
 	return run(repoRoot, "branch", name)
