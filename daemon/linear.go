@@ -114,7 +114,7 @@ const issueFields = `
 	state { name }
 	branchName
 	labels { nodes { name } }
-	projectMilestone { name }
+	parent { id identifier branchName }
 	creator { id }
 `
 
@@ -136,9 +136,11 @@ type issueNode struct {
 			Name string `json:"name"`
 		} `json:"nodes"`
 	} `json:"labels"`
-	ProjectMilestone *struct {
-		Name string `json:"name"`
-	} `json:"projectMilestone"`
+	Parent *struct {
+		ID         string `json:"id"`
+		Identifier string `json:"identifier"`
+		BranchName string `json:"branchName"`
+	} `json:"parent"`
 	Creator *struct {
 		ID string `json:"id"`
 	} `json:"creator"`
@@ -149,9 +151,13 @@ func (n issueNode) toIssue() Issue {
 	for i, l := range n.Labels.Nodes {
 		labels[i] = strings.ToLower(l.Name)
 	}
-	var milestone string
-	if n.ProjectMilestone != nil {
-		milestone = n.ProjectMilestone.Name
+	var parent *IssueRef
+	if n.Parent != nil {
+		parent = &IssueRef{
+			ID:         n.Parent.ID,
+			Identifier: n.Parent.Identifier,
+			BranchName: n.Parent.BranchName,
+		}
 	}
 	var creatorID string
 	if n.Creator != nil {
@@ -167,7 +173,7 @@ func (n issueNode) toIssue() Issue {
 		BranchName:  n.BranchName,
 		URL:         n.URL,
 		Labels:      labels,
-		Milestone:   milestone,
+		Parent:      parent,
 		CreatorID:   creatorID,
 		CreatedAt:   n.CreatedAt,
 		UpdatedAt:   n.UpdatedAt,

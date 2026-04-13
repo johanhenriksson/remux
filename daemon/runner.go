@@ -40,6 +40,12 @@ func EnsureWorkspace(issue Issue, repoRoot, destDir, baseBranch string) (string,
 		log.Printf("[%s] git pull: %v (continuing with current HEAD)", issue.Identifier, err)
 	}
 
+	if baseBranch != "" {
+		if err := git.FetchBranch(repoRoot, baseBranch); err != nil {
+			log.Printf("[%s] fetch base branch %q: %v (continuing with local ref)", issue.Identifier, baseBranch, err)
+		}
+	}
+
 	path, err := spaces.Create(spaces.CreateOptions{
 		RepoRoot:            repoRoot,
 		DestDir:             destDir,
@@ -324,17 +330,31 @@ func agentEnv(workspacePath string) []string {
 	return env
 }
 
-// milestoneBranch returns the branch name for a milestone if one exists.
-// Returns empty string if the issue has no milestone or no matching branch exists.
-func milestoneBranch(issue Issue, repoRoot string) string {
-	if issue.Milestone == "" {
-		return ""
+// parentBranch returns the branch name of the issue's parent, creating the
+// local branch from origin or master if necessary. Returns empty string if
+// the issue has no parent.
+func parentBranch(issue Issue, repoRoot string) (string, error) {
+	if issue.Parent == nil {
+		return "", nil
 	}
-	branch := spaces.SlugifyBranch(issue.Milestone)
+	branch := branchNameFor(issue.Parent.BranchName, issue.Parent.Identifier)
+
 	if git.BranchExists(repoRoot, branch) {
-		return branch
+		if err := git.FetchBranch(repoRoot, branch); err != nil {
+			log.Printf("[%s] fetch parent branch %q: %v (continuing with local ref)", issue.Identifier, branch, err)
+		}
+		return branch, nil
 	}
-	return ""
+
+	if err := git.FetchBranch(repoRoot, branch); err == nil {
+		return branch, nil
+	}
+
+	log.Printf("[%s] creating parent branch %q from master", issue.Identifier, branch)
+	if err := git.CreateBranchFrom(repoRoot, branch, "master"); err != nil {
+		return "", fmt.Errorf("create parent branch %q from master: %w", branch, err)
+	}
+	return branch, nil
 }
 
 func hasLabel(labels []string, target string) bool {
@@ -348,11 +368,15 @@ func hasLabel(labels []string, target string) bool {
 
 var ticketPattern = regexp.MustCompile(`^(.*?[a-zA-Z]+-\d+)`)
 
-func issueBranch(issue Issue) string {
-	if issue.BranchName != "" {
-		if m := ticketPattern.FindString(issue.BranchName); m != "" {
+func branchNameFor(branchName, identifier string) string {
+	if branchName != "" {
+		if m := ticketPattern.FindString(branchName); m != "" {
 			return m
 		}
 	}
-	return strings.ToLower(issue.Identifier)
+	return strings.ToLower(identifier)
+}
+
+func issueBranch(issue Issue) string {
+	return branchNameFor(issue.BranchName, issue.Identifier)
 }

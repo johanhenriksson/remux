@@ -5,6 +5,13 @@ import (
 	"time"
 )
 
+// IssueRef is a lightweight reference to another issue.
+type IssueRef struct {
+	ID         string
+	Identifier string
+	BranchName string
+}
+
 // Issue represents a Linear issue.
 type Issue struct {
 	ID          string
@@ -16,7 +23,7 @@ type Issue struct {
 	BranchName  string
 	URL         string
 	Labels      []string
-	Milestone   string
+	Parent      *IssueRef
 	CreatorID   string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
@@ -30,7 +37,7 @@ type RunEntry struct {
 	Attempt         int
 	StepKey         string
 	CommentID       string
-	MilestoneBranch string
+	BaseBranch      string
 	StartedAt       time.Time
 	Cancel          context.CancelFunc
 	ResultCh        <-chan RunResult

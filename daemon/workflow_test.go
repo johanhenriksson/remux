@@ -92,7 +92,7 @@ You are working on issue {{.Identifier}}: {{.Title}}
 		Description: "Users can't log in",
 	}
 	attempt := 1
-	prompt, err := wf.RenderPrompt(issue, "todo", &attempt, "", "")
+	prompt, err := wf.RenderPrompt(issue, "todo", &attempt, "", "session-1")
 	if err != nil {
 		t.Fatal(err)
 	}
