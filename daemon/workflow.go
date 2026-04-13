@@ -98,7 +98,7 @@ func LoadWorkflow(path string) (*Workflow, error) {
 }
 
 // RenderPrompt renders the prompt template with the given issue, step name, and attempt number.
-func (w *Workflow) RenderPrompt(issue Issue, stepName string, attempt *int, milestoneBranch string) (string, error) {
+func (w *Workflow) RenderPrompt(issue Issue, stepName string, attempt *int, milestoneBranch, sessionID string) (string, error) {
 	data := map[string]any{
 		"ID":              issue.ID,
 		"Identifier":      issue.Identifier,
@@ -113,6 +113,7 @@ func (w *Workflow) RenderPrompt(issue Issue, stepName string, attempt *int, mile
 		"Attempt":         attempt,
 		"Milestone":       issue.Milestone,
 		"MilestoneBranch": milestoneBranch,
+		"SessionID":       sessionID,
 	}
 
 	var buf bytes.Buffer
