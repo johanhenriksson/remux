@@ -331,8 +331,8 @@ func agentEnv(workspacePath string) []string {
 }
 
 // parentBranch returns the branch name of the issue's parent, creating the
-// local branch from origin or master if necessary. Returns empty string if
-// the issue has no parent.
+// local branch from origin or the repo's default branch if necessary. Returns
+// empty string if the issue has no parent.
 func parentBranch(issue Issue, repoRoot string) (string, error) {
 	if issue.Parent == nil {
 		return "", nil
@@ -350,9 +350,15 @@ func parentBranch(issue Issue, repoRoot string) (string, error) {
 		return branch, nil
 	}
 
-	log.Printf("[%s] creating parent branch %q from master", issue.Identifier, branch)
-	if err := git.CreateBranchFrom(repoRoot, branch, "master"); err != nil {
-		return "", fmt.Errorf("create parent branch %q from master: %w", branch, err)
+	defaultBranch, err := git.DefaultBranch(repoRoot)
+	if err != nil {
+		return "", fmt.Errorf("resolve default branch: %w", err)
+	}
+	base := git.ResolveBase(repoRoot, defaultBranch)
+
+	log.Printf("[%s] creating parent branch %q from %q", issue.Identifier, branch, base)
+	if err := git.CreateBranchFrom(repoRoot, branch, base); err != nil {
+		return "", fmt.Errorf("create parent branch %q from %q: %w", branch, base, err)
 	}
 	return branch, nil
 }
