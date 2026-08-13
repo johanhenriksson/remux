@@ -81,6 +81,11 @@ func (s *Space) ResolveEnv() (map[string]string, error) {
 	return s.config.ResolveEnv(s.configSpace())
 }
 
+// Agent returns the configured agent for this space, if any.
+func (s *Space) Agent() string {
+	return s.config.Agent
+}
+
 // Tabs returns the resolved tab configurations for this space.
 func (s *Space) Tabs(prompt string) ([]config.Tab, error) {
 	cs := s.configSpace()

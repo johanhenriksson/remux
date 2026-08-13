@@ -78,11 +78,16 @@ Use `-p` to give the workspace an initial prompt:
 remux new mything -p "create mything"
 ```
 
-The prompt fills the `{{ prompt }}` template variable, so a tab configured as
-`prompt: "{{ prompt }}"` receives it. For `claude` and `codex` tabs the prompt is
-appended to the command (`claude 'create mything'`) so the agent starts working
-immediately; other commands get the prompt typed into the tab instead. Works with
-`remux open` too.
+The prompt is passed to the agent running in the first tab (`claude 'create
+mything'`) so it starts working immediately. It also fills the `{{ prompt }}`
+template variable, so a configured tab with `prompt: "{{ prompt }}"` receives it
+too. Works with `remux open` as well.
+
+Pick the agent with `--agent`:
+
+```bash
+remux new mything --agent codex -p "create mything"
+```
 
 ### Open an existing workspace
 
@@ -150,9 +155,21 @@ tabs:
   - name: shell
 ```
 
-Each tab becomes a tmux window in the session. The first tab reuses the default window; additional tabs create new windows. Tab names and commands support the same template expressions as env vars and hooks.
+Each tab becomes a tmux window in the session, after the agent tab. Tab names and commands support the same template expressions as env vars and hooks.
 
-If no tabs are configured, the session opens with a single default window.
+### Agent
+
+The first tab always runs the agent. `claude` is used by default; override it per
+workspace in config, or per invocation with `--agent`:
+
+```yaml
+agent: codex
+```
+
+Known agents (`claude`, `codex`) are started with sensible flags — `claude` runs
+in auto permission mode — and receive the `-p` prompt as a positional argument.
+Any other value is used as the command line verbatim, so
+`--agent "claude --model opus"` works too. Use `none` to skip the agent tab.
 
 ### Hooks
 

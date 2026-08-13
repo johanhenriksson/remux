@@ -17,7 +17,8 @@ import (
 type OpenSessionOptions struct {
 	DestDir string            // Worktree directory
 	Name    string            // Name of the space to open
-	Prompt  string            // Prompt string for tab template evaluation
+	Prompt  string            // Initial prompt for the agent, also available to tab templates
+	Agent   string            // Agent to run in the first tab (overrides config, default: claude)
 	EnvVars map[string]string // Session-level environment variables (optional)
 	Detach  bool              // Create session without attaching
 }
@@ -85,16 +86,22 @@ func OpenSession(opts OpenSessionOptions) error {
 		return fmt.Errorf("failed to resolve tabs: %w", err)
 	}
 
+	// The agent runs in the first tab; configured tabs come after it
+	agent := opts.Agent
+	if agent == "" {
+		agent = space.Agent()
+	}
+	if tab, ok := agentTab(agent, opts.Prompt); ok {
+		tabs = append([]config.Tab{tab}, tabs...)
+	}
+
 	// Create session detached so we can set up tabs before attaching
 	if err := tmux.NewSessionDetached(opts.Name, spacePath, opts.EnvVars); err != nil {
 		return err
 	}
 
-	// Set up tabs if configured
-	if len(tabs) > 0 {
-		if err := setupTabs(opts.Name, spacePath, tabs); err != nil {
-			return fmt.Errorf("failed to setup tabs: %w", err)
-		}
+	if err := setupTabs(opts.Name, spacePath, tabs); err != nil {
+		return fmt.Errorf("failed to setup tabs: %w", err)
 	}
 
 	if opts.Detach {
@@ -108,9 +115,37 @@ func OpenSession(opts OpenSessionOptions) error {
 	return tmux.Attach(opts.Name)
 }
 
-// agentCommands are CLIs that accept an initial prompt as a positional
-// argument, letting them start working without typing into the TUI.
-var agentCommands = map[string]bool{"claude": true, "codex": true}
+// agentCommands maps known agent names to the command that starts them. These
+// CLIs accept an initial prompt as a positional argument, letting them start
+// working without typing into the TUI.
+var agentCommands = map[string]string{
+	"claude": "claude --permission-mode auto",
+	"codex":  "codex",
+}
+
+const defaultAgent = "claude"
+
+// agentTab builds the leading tab that runs the agent. Unknown agents are used
+// as the command line verbatim, so arbitrary commands and flags work too.
+// Returns false for the agent "none", which disables the agent tab entirely.
+func agentTab(agent, prompt string) (config.Tab, bool) {
+	agent = strings.TrimSpace(agent)
+	if agent == "" {
+		agent = defaultAgent
+	}
+	if agent == "none" {
+		return config.Tab{}, false
+	}
+	cmd, known := agentCommands[agent]
+	if !known {
+		cmd = agent
+	}
+	return config.Tab{
+		Name:   filepath.Base(strings.Fields(cmd)[0]),
+		Cmd:    cmd,
+		Prompt: prompt,
+	}, true
+}
 
 // inlinePrompt moves a tab's prompt into its command line when the command is
 // an agent that accepts a positional prompt. Returns the tab unchanged
@@ -118,7 +153,10 @@ var agentCommands = map[string]bool{"claude": true, "codex": true}
 func inlinePrompt(tab config.Tab) config.Tab {
 	prompt := strings.TrimSpace(tab.Prompt)
 	fields := strings.Fields(tab.Cmd)
-	if prompt == "" || len(fields) == 0 || !agentCommands[filepath.Base(fields[0])] {
+	if prompt == "" || len(fields) == 0 {
+		return tab
+	}
+	if _, known := agentCommands[filepath.Base(fields[0])]; !known {
 		return tab
 	}
 	tab.Cmd += " " + shellQuote(prompt)

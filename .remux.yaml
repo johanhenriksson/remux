@@ -1,5 +1,3 @@
 tabs:
-  - cmd: claude
-    prompt: "{{ prompt }}"
   - cmd: nvim .
   - name: shell
