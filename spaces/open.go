@@ -108,9 +108,33 @@ func OpenSession(opts OpenSessionOptions) error {
 	return tmux.Attach(opts.Name)
 }
 
+// agentCommands are CLIs that accept an initial prompt as a positional
+// argument, letting them start working without typing into the TUI.
+var agentCommands = map[string]bool{"claude": true, "codex": true}
+
+// inlinePrompt moves a tab's prompt into its command line when the command is
+// an agent that accepts a positional prompt. Returns the tab unchanged
+// otherwise.
+func inlinePrompt(tab config.Tab) config.Tab {
+	prompt := strings.TrimSpace(tab.Prompt)
+	fields := strings.Fields(tab.Cmd)
+	if prompt == "" || len(fields) == 0 || !agentCommands[filepath.Base(fields[0])] {
+		return tab
+	}
+	tab.Cmd += " " + shellQuote(prompt)
+	tab.Prompt = ""
+	return tab
+}
+
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
 // setupTabs configures tmux windows based on tab configuration.
 func setupTabs(session, workdir string, tabs []config.Tab) error {
 	for i, tab := range tabs {
+		tab = inlinePrompt(tab)
+
 		if i == 0 {
 			// First tab uses the default window (active after session creation)
 			if tab.Name != "" {

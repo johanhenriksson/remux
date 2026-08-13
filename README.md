@@ -72,6 +72,18 @@ Use `--dest` to specify a different destination directory:
 remux new feature-branch --dest ~/workspaces
 ```
 
+Use `-p` to give the workspace an initial prompt:
+
+```bash
+remux new mything -p "create mything"
+```
+
+The prompt fills the `{{ prompt }}` template variable, so a tab configured as
+`prompt: "{{ prompt }}"` receives it. For `claude` and `codex` tabs the prompt is
+appended to the command (`claude 'create mything'`) so the agent starts working
+immediately; other commands get the prompt typed into the tab instead. Works with
+`remux open` too.
+
 ### Open an existing workspace
 
 ```bash
