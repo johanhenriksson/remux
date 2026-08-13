@@ -25,6 +25,7 @@ type Tab struct {
 type Config struct {
 	Env   map[string]string `yaml:"env"`
 	Hooks Hooks             `yaml:"hooks"`
+	Agent string            `yaml:"agent"`
 	Tabs  []Tab             `yaml:"tabs"`
 }
 
@@ -125,6 +126,10 @@ func merge(base, override *Config) *Config {
 			merged[k] = v
 		}
 		result.Env = merged
+	}
+
+	if override.Agent != "" {
+		result.Agent = override.Agent
 	}
 
 	// Replace tabs entirely
