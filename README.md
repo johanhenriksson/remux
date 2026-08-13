@@ -148,6 +148,21 @@ If no tabs are configured, the session opens with a single default window.
 - `on_open` - Runs when workspace is opened (blocking)
 - `on_drop` - Runs when workspace is removed (blocking)
 
+### Daemon agent commands
+
+The daemon reads `agent.command` from `WORKFLOW.md`. Claude commands keep the
+existing stream-json invocation, while commands starting with `codex` run through
+Codex exec JSONL mode:
+
+```yaml
+agent:
+  command: "codex exec --json"
+```
+
+Remux adds `exec` and `--json` when they are omitted, then appends the rendered
+workflow prompt as the final positional argument. Add any Codex model, profile,
+sandbox, or approval flags directly to `agent.command`.
+
 ## License
 
 MIT

@@ -72,8 +72,147 @@ func EnsureSession(workspacePath, destDir string, envVars map[string]string) err
 	})
 }
 
-// LaunchAgent runs a claude agent as a subprocess in the workspace directory.
-// Parses stream-json output for logging. Returns a channel that receives the
+type agentKind string
+
+const (
+	agentKindClaude agentKind = "claude"
+	agentKindCodex  agentKind = "codex"
+)
+
+type agentInvocation struct {
+	kind  agentKind
+	parts []string
+}
+
+func buildAgentInvocation(agentCmd string, issue Issue, prompt, sessionID, sessionName string) (agentInvocation, error) {
+	parts, err := splitCommandLine(agentCmd)
+	if err != nil {
+		return agentInvocation{}, fmt.Errorf("parse agent command: %w", err)
+	}
+	if len(parts) == 0 {
+		return agentInvocation{}, fmt.Errorf("agent command is empty")
+	}
+
+	if filepath.Base(parts[0]) == "codex" {
+		return agentInvocation{
+			kind:  agentKindCodex,
+			parts: codexAgentArgs(parts, prompt),
+		}, nil
+	}
+
+	return agentInvocation{
+		kind:  agentKindClaude,
+		parts: claudeAgentArgs(parts, issue, prompt, sessionID, sessionName),
+	}, nil
+}
+
+func claudeAgentArgs(parts []string, issue Issue, prompt, sessionID, sessionName string) []string {
+	out := append([]string(nil), parts...)
+	out = append(out, "--output-format", "stream-json", "--verbose", "--remote-control", issue.Identifier)
+	if sessionID != "" {
+		out = append(out, "--session-id", sessionID)
+	}
+	if sessionName != "" {
+		out = append(out, "--name", sessionName)
+	}
+	if hasLabel(issue.Labels, "max") {
+		out = append(out, "--effort", "max")
+	}
+	return append(out, "-p", prompt)
+}
+
+func codexAgentArgs(parts []string, prompt string) []string {
+	out := append([]string(nil), parts...)
+	if !hasCodexExecSubcommand(out) {
+		out = append(out, "exec")
+	}
+	if !hasArg(out, "--json") {
+		out = append(out, "--json")
+	}
+	return append(out, "--", prompt)
+}
+
+func hasCodexExecSubcommand(parts []string) bool {
+	for _, part := range parts[1:] {
+		if part == "exec" || part == "e" {
+			return true
+		}
+	}
+	return false
+}
+
+func hasArg(parts []string, arg string) bool {
+	for _, part := range parts {
+		if part == arg {
+			return true
+		}
+	}
+	return false
+}
+
+func splitCommandLine(command string) ([]string, error) {
+	var args []string
+	var b strings.Builder
+	var quote rune
+	escaped := false
+	started := false
+
+	flush := func() {
+		args = append(args, b.String())
+		b.Reset()
+		started = false
+	}
+
+	for _, r := range command {
+		if escaped {
+			b.WriteRune(r)
+			escaped = false
+			started = true
+			continue
+		}
+		if r == '\\' {
+			escaped = true
+			started = true
+			continue
+		}
+		if quote != 0 {
+			if r == quote {
+				quote = 0
+			} else {
+				b.WriteRune(r)
+			}
+			started = true
+			continue
+		}
+
+		switch r {
+		case '\t', '\n', '\r', ' ':
+			if started {
+				flush()
+			}
+		case '\'', '"':
+			quote = r
+			started = true
+		default:
+			b.WriteRune(r)
+			started = true
+		}
+	}
+
+	if escaped {
+		b.WriteRune('\\')
+	}
+	if quote != 0 {
+		return nil, fmt.Errorf("unterminated quote")
+	}
+	if started {
+		flush()
+	}
+	return args, nil
+}
+
+// LaunchAgent runs an agent as a subprocess in the workspace directory.
+// Parses JSONL output for logging. Returns a channel that receives the
 // result when the process exits. If logger is non-nil, text output is streamed
 // to the Linear comment.
 func LaunchAgent(ctx context.Context, issue Issue, agentCmd, prompt, workspacePath, sessionID, sessionName string, idleTimeout time.Duration, logger *CommentLogger) (<-chan RunResult, error) {
@@ -82,22 +221,14 @@ func LaunchAgent(ctx context.Context, issue Issue, agentCmd, prompt, workspacePa
 		return nil, fmt.Errorf("write prompt file: %w", err)
 	}
 
-	parts := strings.Fields(agentCmd)
-	parts = append(parts, "--output-format", "stream-json", "--verbose", "--remote-control", issue.Identifier)
-	if sessionID != "" {
-		parts = append(parts, "--session-id", sessionID)
+	invocation, err := buildAgentInvocation(agentCmd, issue, prompt, sessionID, sessionName)
+	if err != nil {
+		return nil, err
 	}
-	if sessionName != "" {
-		parts = append(parts, "--name", sessionName)
-	}
-	if hasLabel(issue.Labels, "max") {
-		parts = append(parts, "--effort", "max")
-	}
-	parts = append(parts, "-p", prompt)
 
 	idleCtx, idleCancel := context.WithCancelCause(ctx)
 
-	cmd := exec.CommandContext(idleCtx, parts[0], parts[1:]...)
+	cmd := exec.CommandContext(idleCtx, invocation.parts[0], invocation.parts[1:]...)
 	cmd.Dir = workspacePath
 	cmd.Stderr = os.Stderr
 	cmd.Env = agentEnv(workspacePath)
@@ -135,7 +266,7 @@ func LaunchAgent(ctx context.Context, issue Issue, agentCmd, prompt, workspacePa
 			if idleTimer != nil {
 				idleTimer.Reset(idleTimeout)
 			}
-			processStreamLine(prefix, scanner.Bytes(), logger)
+			processStreamLine(prefix, scanner.Bytes(), invocation.kind, logger)
 		}
 
 		if idleTimer != nil {
@@ -251,7 +382,15 @@ type contentBlock struct {
 	Input any    `json:"input"`
 }
 
-func processStreamLine(prefix string, line []byte, logger *CommentLogger) {
+func processStreamLine(prefix string, line []byte, kind agentKind, logger *CommentLogger) {
+	if kind == agentKindCodex {
+		processCodexStreamLine(prefix, line, logger)
+		return
+	}
+	processClaudeStreamLine(prefix, line, logger)
+}
+
+func processClaudeStreamLine(prefix string, line []byte, logger *CommentLogger) {
 	var event streamEvent
 	if err := json.Unmarshal(line, &event); err != nil {
 		return
@@ -285,6 +424,170 @@ func processStreamLine(prefix string, line []byte, logger *CommentLogger) {
 				prefix, event.StopReason, event.NumTurns, float64(event.DurationMs)/1000, event.TotalCost)
 		}
 	}
+}
+
+func processCodexStreamLine(prefix string, line []byte, logger *CommentLogger) {
+	var event map[string]any
+	if err := json.Unmarshal(line, &event); err != nil {
+		return
+	}
+	event = unwrapCodexEvent(event)
+
+	for _, text := range codexEventTexts(event) {
+		if first := firstLine(text); first != "" {
+			log.Printf("%s text: %s", prefix, first)
+		}
+		if logger != nil && strings.TrimSpace(text) != "" {
+			logger.Append(text)
+		}
+	}
+
+	if name := codexEventToolName(event); name != "" {
+		log.Printf("%s tool: %s", prefix, name)
+	}
+
+	if codexEventIsResult(event) {
+		log.Printf("%s result: %s", prefix, codexEventResult(event))
+	}
+}
+
+func unwrapCodexEvent(event map[string]any) map[string]any {
+	for _, key := range []string{"event", "msg", "payload"} {
+		if nested, ok := mapValue(event, key); ok {
+			if _, hasType := nested["type"].(string); hasType {
+				return nested
+			}
+		}
+	}
+	return event
+}
+
+func codexEventTexts(event map[string]any) []string {
+	var texts []string
+	eventType, _ := stringValue(event, "type")
+	if eventType == "agent_message" || eventType == "assistant_message" || eventType == "message" {
+		appendStringFields(&texts, event, "message", "text")
+	}
+
+	item, ok := mapValue(event, "item")
+	if !ok || !codexItemIsAssistantMessage(item) {
+		return texts
+	}
+
+	appendStringFields(&texts, item, "message", "text")
+	if content, ok := item["content"].([]any); ok {
+		for _, raw := range content {
+			block, ok := raw.(map[string]any)
+			if !ok || !codexContentIsText(block) {
+				continue
+			}
+			appendStringFields(&texts, block, "text")
+		}
+	}
+	return texts
+}
+
+func codexItemIsAssistantMessage(item map[string]any) bool {
+	role, _ := stringValue(item, "role")
+	itemType, _ := stringValue(item, "type")
+	return role == "assistant" || itemType == "assistant_message" || itemType == "agent_message" || (role == "" && itemType == "message")
+}
+
+func codexContentIsText(block map[string]any) bool {
+	blockType, ok := stringValue(block, "type")
+	return !ok || strings.Contains(blockType, "text") || blockType == "message"
+}
+
+func appendStringFields(out *[]string, m map[string]any, keys ...string) {
+	for _, key := range keys {
+		if s, ok := stringValue(m, key); ok && strings.TrimSpace(s) != "" {
+			*out = append(*out, s)
+		}
+	}
+}
+
+func codexEventToolName(event map[string]any) string {
+	eventType, _ := stringValue(event, "type")
+	if strings.Contains(eventType, "tool") || strings.Contains(eventType, "exec") || strings.Contains(eventType, "function") {
+		if name := firstStringValue(event, "name", "tool_name", "command", "cmd", "parsed_cmd"); name != "" {
+			return name
+		}
+	}
+
+	item, ok := mapValue(event, "item")
+	if !ok {
+		return ""
+	}
+	itemType, _ := stringValue(item, "type")
+	if !strings.Contains(itemType, "tool") && !strings.Contains(itemType, "exec") && !strings.Contains(itemType, "function") {
+		return ""
+	}
+	return firstStringValue(item, "name", "tool_name", "command", "cmd", "parsed_cmd")
+}
+
+func codexEventIsResult(event map[string]any) bool {
+	eventType, _ := stringValue(event, "type")
+	switch eventType {
+	case "result", "completed", "turn.completed", "turn_complete", "turn.finished", "turn_finished":
+		return true
+	default:
+		return false
+	}
+}
+
+func codexEventResult(event map[string]any) string {
+	if status := firstStringValue(event, "status", "stop_reason", "outcome"); status != "" {
+		return status
+	}
+	if code, ok := numberValue(event, "exit_code"); ok {
+		if code == 0 {
+			return "exit 0"
+		}
+		return fmt.Sprintf("exit %.0f", code)
+	}
+	return "completed"
+}
+
+func firstStringValue(m map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if s, ok := stringValue(m, key); ok && s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+func stringValue(m map[string]any, key string) (string, bool) {
+	v, ok := m[key]
+	if !ok {
+		return "", false
+	}
+	s, ok := v.(string)
+	return s, ok
+}
+
+func numberValue(m map[string]any, key string) (float64, bool) {
+	v, ok := m[key]
+	if !ok {
+		return 0, false
+	}
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case int:
+		return float64(n), true
+	default:
+		return 0, false
+	}
+}
+
+func mapValue(m map[string]any, key string) (map[string]any, bool) {
+	v, ok := m[key]
+	if !ok {
+		return nil, false
+	}
+	nested, ok := v.(map[string]any)
+	return nested, ok
 }
 
 func firstLine(s string) string {
