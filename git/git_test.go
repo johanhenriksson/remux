@@ -110,6 +110,31 @@ var _ = Describe("Git", func() {
 			actualPath, _ := filepath.EvalSymlinks(path)
 			Expect(actualPath).To(Equal(expectedPath))
 		})
+
+		It("returns an absolute path from the main repo", func() {
+			path, err := git.GetMainRepoPath(mainRepoDir)
+			Expect(err).NotTo(HaveOccurred())
+
+			expectedPath, _ := filepath.EvalSymlinks(mainRepoDir)
+			actualPath, _ := filepath.EvalSymlinks(path)
+			Expect(actualPath).To(Equal(expectedPath))
+		})
+	})
+
+	Describe("FindRoot", func() {
+		It("returns the main repo when run from a worktree", func() {
+			cwd, err := os.Getwd()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(os.Chdir(worktreeDir)).To(Succeed())
+			defer os.Chdir(cwd)
+
+			path, err := git.FindRoot()
+			Expect(err).NotTo(HaveOccurred())
+
+			expectedPath, _ := filepath.EvalSymlinks(mainRepoDir)
+			actualPath, _ := filepath.EvalSymlinks(path)
+			Expect(actualPath).To(Equal(expectedPath))
+		})
 	})
 })
 

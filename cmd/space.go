@@ -98,13 +98,6 @@ func runNew(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("not in a git repository: %w", err)
 	}
 
-	if git.IsWorktree(repoRoot) {
-		repoRoot, err = git.GetMainRepoPath(repoRoot)
-		if err != nil {
-			return fmt.Errorf("failed to find main repository: %w", err)
-		}
-	}
-
 	dest, err := getPath()
 	if err != nil {
 		return err
