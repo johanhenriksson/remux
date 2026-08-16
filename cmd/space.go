@@ -164,6 +164,18 @@ func runList(cmd *cobra.Command, args []string) error {
 	}
 
 	entries := reg.List()
+
+	// only show spaces belonging to the current repository
+	if repoRoot, err := git.FindRoot(); err == nil {
+		filtered := make([]registry.Entry, 0, len(entries))
+		for _, e := range entries {
+			if e.RepoRoot == repoRoot {
+				filtered = append(filtered, e)
+			}
+		}
+		entries = filtered
+	}
+
 	if len(entries) == 0 {
 		fmt.Println("No tracked spaces")
 		return nil
