@@ -8,13 +8,11 @@ import (
 	"strings"
 )
 
-// FindRoot returns the root of the current git repository.
+// FindRoot returns the root of the main git repository for the current
+// directory. When invoked from a linked worktree it resolves to the main
+// repository, not the worktree.
 func FindRoot() (string, error) {
-	out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(out)), nil
+	return GetMainRepoPath(".")
 }
 
 // BranchExists checks if a branch exists in the repository.
@@ -125,7 +123,7 @@ func HasUncommittedChanges(path string) bool {
 
 // GetMainRepoPath returns the path to the main repository from a worktree.
 func GetMainRepoPath(worktreePath string) (string, error) {
-	cmd := exec.Command("git", "-C", worktreePath, "rev-parse", "--git-common-dir")
+	cmd := exec.Command("git", "-C", worktreePath, "rev-parse", "--path-format=absolute", "--git-common-dir")
 	out, err := cmd.Output()
 	if err != nil {
 		return "", err

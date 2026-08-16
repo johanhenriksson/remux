@@ -39,13 +39,6 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if git.IsWorktree(repoRoot) {
-		repoRoot, err = git.GetMainRepoPath(repoRoot)
-		if err != nil {
-			return err
-		}
-	}
-
 	destDir, err := resolveDestDir(daemonPathDir)
 	if err != nil {
 		return err
