@@ -40,10 +40,7 @@ func runDrop(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to load registry: %w", err)
 		}
-		entry := reg.Get(args[0])
-		if entry == nil {
-			entry = reg.GetByBranch(args[0])
-		}
+		entry := findEntry(reg, args[0])
 		if entry == nil {
 			return fmt.Errorf("space not found: %s", args[0])
 		}

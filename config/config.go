@@ -19,6 +19,10 @@ type Tab struct {
 	Prompt  string `yaml:"prompt"`
 	Await   string `yaml:"await"`
 	Timeout int    `yaml:"timeout"` // seconds, 0 = default (60s)
+
+	// AgentName marks the tab running the workspace's agent and names it in
+	// backends that track agents (herdr). Not configurable.
+	AgentName string `yaml:"-"`
 }
 
 // Config represents a workspace configuration file.
