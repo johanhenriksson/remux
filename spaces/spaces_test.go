@@ -384,6 +384,10 @@ var _ = Describe("Open Integration", func() {
 	})
 
 	It("sets SPACE_PORT in tmux session environment", func() {
+		// No agent tab, so the first window is a plain shell
+		err := os.WriteFile(filepath.Join(mainRepoDir, ".remux.local.yaml"), []byte("agent: none\n"), 0644)
+		Expect(err).NotTo(HaveOccurred())
+
 		// Create a space (allocates port)
 		createOpts := spaces.CreateOptions{
 			RepoRoot:   mainRepoDir,
