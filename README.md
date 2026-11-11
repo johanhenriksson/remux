@@ -1,6 +1,6 @@
 # Remux
 
-Run multiple coding agents in parallel using git worktrees and tmux.
+Run multiple coding agents in parallel using git worktrees and tmux (or [herdr](#backends)).
 
 ## Why Remux?
 
@@ -8,7 +8,7 @@ When running multiple AI coding agents simultaneously, each needs its own isolat
 environment to avoid conflicts. Remux automates this by:
 
 - Creating git worktrees so each agent works on its own branch
-- Managing tmux sessions for easy switching between agents
+- Managing tmux sessions (or herdr workspaces) for easy switching between agents
 - Allocating unique ports so web apps can run in parallel
 - Running setup hooks automatically (npm install, docker compose, etc.)
 
@@ -39,7 +39,7 @@ hooks:
 ```
 
 The environment variables defined in `.remux.yaml` will be available in
-the tmux session of that workspace.
+the session of that workspace.
 
 Now your main branch runs on port 11010 and add-auth runs on 11020.
 
@@ -63,8 +63,9 @@ This will:
 1. Create a new Git branch `feature-branch`
 2. Create a worktree in `~/.remux/repo-feature-branch`
 3. Register the workspace and allocate a port
-4. Run any `on_create` hooks from `.remux.yaml`
-5. Open a tmux session in the new workspace
+4. Start a session for the workspace (tmux or herdr, see [Backends](#backends))
+5. Write the `env_file` if configured, and run any `on_create` hooks from `.remux.yaml`
+6. Open the configured tabs and attach to the session (`-d` to stay detached)
 
 Use `--dest` to specify a different destination directory:
 
@@ -95,7 +96,16 @@ remux new mything --agent codex -p "create mything"
 remux open feature-branch
 ```
 
-Opens a tmux session for an existing workspace.
+Opens the session for an existing workspace, recreating it if it was closed.
+Use `-d` to recreate it without attaching.
+
+### Close a workspace session
+
+```bash
+remux close [name]
+```
+
+Ends the session but keeps the worktree, so `remux open` can bring it back.
 
 ### List workspaces
 
@@ -109,7 +119,7 @@ remux list
 remux drop
 ```
 
-Removes the current worktree, unregisters it, and kills the tmux session. Fails if there are uncommitted changes.
+Closes the session, runs `on_drop` hooks, then removes the worktree and unregisters it. Fails if there are uncommitted changes.
 
 ## Configuration
 
@@ -144,7 +154,7 @@ Configuration values support template expressions using `{{ }}` syntax:
 
 ### Tabs
 
-Define tmux windows (tabs) that are automatically created when opening a workspace:
+Define tabs that are automatically created when opening a workspace:
 
 ```yaml
 tabs:
@@ -155,7 +165,7 @@ tabs:
   - name: shell
 ```
 
-Each tab becomes a tmux window in the session, after the agent tab. Tab names and commands support the same template expressions as env vars and hooks.
+Each tab becomes a tmux window (or herdr tab) in the session, after the agent tab. Tab names and commands support the same template expressions as env vars and hooks.
 
 ### Agent
 
@@ -171,9 +181,46 @@ in auto permission mode — and receive the `-p` prompt as a positional argument
 Any other value is used as the command line verbatim, so
 `--agent "claude --model opus"` works too. Use `none` to skip the agent tab.
 
+### Env file
+
+```yaml
+env_file: .env.local
+```
+
+When set, remux writes the resolved `env` (plus `SPACE_PORT`) as a dotenv file at
+this path, relative to the worktree, when the workspace is created. Shells and
+tools that don't inherit the session env (a herdr tab opened by hand, an editor,
+Task's `dotenv:`) can load it. Add the file to `.gitignore`.
+
+### Backends
+
+The session backend is chosen with `backend`:
+
+```yaml
+backend: herdr   # or tmux (default)
+```
+
+Like other keys, it can be set in `.remux.yaml` or overridden per machine in
+`.remux.local.yaml`. To make herdr your default across repositories, set
+`REMUX_BACKEND=herdr` in your shell; config files take precedence over it.
+
+remux always owns the worktree, port, env, hooks and teardown. The backend only
+runs the interactive session:
+
+- **tmux** (default): one session per workspace, named after it. Session env
+  reaches every window, including ones you open by hand.
+- **herdr**: remux creates the worktree, then attaches it with
+  `herdr worktree open`, so it shows up grouped under the repository's
+  workspace with its branch. Each tab is a herdr tab. herdr env only reaches the
+  process it launches, so remux passes env to every tab it creates, but tabs you
+  open by hand won't have it; use `env_file` for those. `remux close` closes the
+  herdr workspace and keeps the checkout. `remux next`/`prev` cycle through remux
+  workspaces in herdr when run inside herdr. herdr will also open a workspace for
+  the main checkout if none is open.
+
 ### Hooks
 
-- `on_create` - Runs when workspace is created (non-blocking)
+- `on_create` - Runs once, when the first session for a new workspace is created (non-blocking, before tabs start)
 - `on_open` - Runs when workspace is opened (blocking)
 - `on_drop` - Runs when workspace is removed (blocking)
 
