@@ -59,9 +59,9 @@ func EnsureWorkspace(issue Issue, repoRoot, destDir, baseBranch string) (string,
 	return path, nil
 }
 
-// EnsureSession opens the tmux session for the workspace (detached) so that
-// configured tabs (dev servers, etc.) are running. Safe to call if session
-// already exists.
+// EnsureSession opens the workspace session (detached) in its configured
+// backend so that configured tabs (dev servers, etc.) are running. Safe to
+// call if session already exists.
 func EnsureSession(workspacePath, destDir string, envVars map[string]string) error {
 	name := filepath.Base(workspacePath)
 	return spaces.OpenSession(spaces.OpenSessionOptions{

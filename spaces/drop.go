@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/johanhenriksson/remux/backend"
 	"github.com/johanhenriksson/remux/git"
 	"github.com/johanhenriksson/remux/registry"
-	"github.com/johanhenriksson/remux/tmux"
 )
 
 // Drop removes a git worktree at the given path and unregisters it.
@@ -30,16 +30,31 @@ func Drop(worktreePath string, force bool) error {
 
 	spaceName := filepath.Base(worktreePath)
 
-	// Ignore SIGHUP so we survive if we're running inside the tmux session being killed
+	// Ignore SIGHUP so we survive if we're running inside the session being closed
 	signal.Ignore(syscall.SIGHUP)
 
-	// Kill the tmux session first so that processes (e.g. servers) started by tabs
+	// If space isn't registered, skip hooks but still close a session by name
+	// and continue with removal
+	space, openErr := Open(worktreePath)
+	var b backend.Backend
+	if openErr == nil {
+		b, err = space.Backend()
+	} else {
+		b, err = newBackend("")
+	}
+	if err != nil {
+		return err
+	}
+
+	// Close the session first so that processes (e.g. servers) started by tabs
 	// are stopped before on_drop hooks run (e.g. dropping a database)
-	tmux.KillSession(spaceName)
+	bs := backend.Space{Name: spaceName, Path: worktreePath, RepoRoot: mainRepo}
+	if err := b.Close(bs); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to close %s session: %v\n", b.Name(), err)
+	}
 
 	// Run on_drop hooks before removal (abort on failure)
-	// If space isn't registered, skip hooks but continue with removal
-	if space, err := Open(worktreePath); err == nil {
+	if openErr == nil {
 		if err := space.RunOnDrop(); err != nil {
 			return err
 		}

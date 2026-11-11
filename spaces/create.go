@@ -32,7 +32,8 @@ type CreateOptions struct {
 	ReuseExistingBranch bool   // If true, reuse existing branch instead of erroring
 }
 
-// Create creates a git worktree and registers it as a space.
+// Create creates a git worktree and registers it as a space. The space's
+// on_create hooks run on the first OpenSession.
 // If the branch doesn't exist, it creates a new one.
 // If the branch exists and ReuseExistingBranch is true, it reuses it.
 // Returns the worktree path on success.
@@ -83,14 +84,13 @@ func Create(opts CreateOptions) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to load registry: %w", err)
 	}
-	reg.Add(filepath.Base(worktreePath), opts.BranchName, worktreePath, reg.AllocatePort(), opts.RepoRoot)
+	name := filepath.Base(worktreePath)
+	reg.Add(name, opts.BranchName, worktreePath, reg.AllocatePort(), opts.RepoRoot)
+	// on_create hooks run when the first session is opened, after the backend
+	// session exists and before tabs (dev servers etc.) start.
+	reg.Get(name).SetupPending = true
 	if err := reg.Save(opts.DestDir); err != nil {
 		return "", fmt.Errorf("failed to save registry: %w", err)
-	}
-
-	// Run on_create hooks (warn on failure, don't abort)
-	if space, err := Open(worktreePath); err == nil {
-		space.RunOnCreate()
 	}
 
 	return worktreePath, nil
