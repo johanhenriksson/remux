@@ -30,6 +30,10 @@ func (tmuxBackend) Create(space Space, env map[string]string) error {
 func (tmuxBackend) AddTabs(space Space, tabs []config.Tab, env map[string]string) error {
 	session := space.Name
 	for i, tab := range tabs {
+		// Agents take the prompt as a positional argument; tmux has no
+		// line-length limit for send-keys.
+		tab = tab.InlinePrompt()
+
 		if i == 0 {
 			// First tab uses the default window (active after session creation)
 			if tab.Name != "" {

@@ -18,6 +18,11 @@ var pathDir string
 var detachFlag bool
 var promptFlag string
 var agentFlag string
+var agentNameFlag string
+var baseFlag string
+var reuseFlag bool
+var nameFlag string
+var noTabsFlag bool
 
 var newCmd = &cobra.Command{
 	Use:   "new <name>",
@@ -50,10 +55,17 @@ func init() {
 	newCmd.Flags().BoolVarP(&detachFlag, "detach", "d", false, "create workspace without attaching to the session")
 	newCmd.Flags().StringVarP(&promptFlag, "prompt", "p", "", "initial prompt for the agent")
 	newCmd.Flags().StringVar(&agentFlag, "agent", "", "agent to run in the first tab (default: claude)")
+	newCmd.Flags().StringVar(&agentNameFlag, "agent-name", "", "name of the agent in herdr (default: ticket id or slug from the branch)")
+	newCmd.Flags().StringVar(&baseFlag, "base", "", "base ref for a new branch, e.g. origin/main (default: current HEAD)")
+	newCmd.Flags().BoolVar(&reuseFlag, "reuse", false, "reuse the branch without asking if it already exists")
+	newCmd.Flags().StringVar(&nameFlag, "name", "", "workspace name, prefixed with the repo name (default: the branch name)")
+	newCmd.Flags().BoolVar(&noTabsFlag, "no-tabs", false, "only open the agent tab, not the configured tabs")
 	openCmd.Flags().StringVar(&pathDir, "path", "", "worktree directory (default: ~/.remux)")
 	openCmd.Flags().BoolVarP(&detachFlag, "detach", "d", false, "open the session without attaching to it")
 	openCmd.Flags().StringVarP(&promptFlag, "prompt", "p", "", "initial prompt for the agent")
 	openCmd.Flags().StringVar(&agentFlag, "agent", "", "agent to run in the first tab (default: claude)")
+	openCmd.Flags().StringVar(&agentNameFlag, "agent-name", "", "name of the agent in herdr (default: ticket id or slug from the branch)")
+	openCmd.Flags().BoolVar(&noTabsFlag, "no-tabs", false, "only open the agent tab, not the configured tabs")
 }
 
 func getPath() (string, error) {
@@ -104,8 +116,8 @@ func runNew(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	reuseExisting := false
-	if git.BranchExists(repoRoot, branchName) {
+	reuseExisting := reuseFlag
+	if !reuseExisting && git.BranchExists(repoRoot, branchName) {
 		if !confirmPrompt(fmt.Sprintf("Branch %q already exists. Reuse it? [y/N] ", branchName)) {
 			return nil
 		}
@@ -116,6 +128,8 @@ func runNew(cmd *cobra.Command, args []string) error {
 		RepoRoot:            repoRoot,
 		DestDir:             dest,
 		BranchName:          branchName,
+		BaseBranch:          baseFlag,
+		Name:                nameFlag,
 		ReuseExistingBranch: reuseExisting,
 	})
 	if err != nil {
@@ -123,11 +137,13 @@ func runNew(cmd *cobra.Command, args []string) error {
 	}
 
 	return spaces.OpenSession(spaces.OpenSessionOptions{
-		DestDir: dest,
-		Name:    filepath.Base(worktreePath),
-		Prompt:  promptFlag,
-		Agent:   agentFlag,
-		Detach:  detachFlag,
+		DestDir:   dest,
+		Name:      filepath.Base(worktreePath),
+		Prompt:    promptFlag,
+		Agent:     agentFlag,
+		AgentName: agentNameFlag,
+		NoTabs:    noTabsFlag,
+		Detach:    detachFlag,
 	})
 }
 
@@ -146,11 +162,13 @@ func runOpen(cmd *cobra.Command, args []string) error {
 	}
 
 	return spaces.OpenSession(spaces.OpenSessionOptions{
-		DestDir: dest,
-		Name:    spaceName,
-		Prompt:  promptFlag,
-		Agent:   agentFlag,
-		Detach:  detachFlag,
+		DestDir:   dest,
+		Name:      spaceName,
+		Prompt:    promptFlag,
+		Agent:     agentFlag,
+		AgentName: agentNameFlag,
+		NoTabs:    noTabsFlag,
+		Detach:    detachFlag,
 	})
 }
 
@@ -199,5 +217,21 @@ func runList(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%s\n", e.Name, branch, e.Port, status, e.Path)
 	}
 	w.Flush()
+	return nil
+}
+
+// findEntry resolves a workspace argument by full name, then branch, then
+// the short name (as given to --name or open) prefixed with the current
+// repository's name.
+func findEntry(reg *registry.Registry, arg string) *registry.Entry {
+	if entry := reg.Get(arg); entry != nil {
+		return entry
+	}
+	if entry := reg.GetByBranch(arg); entry != nil {
+		return entry
+	}
+	if repoRoot, err := git.FindRoot(); err == nil {
+		return reg.Get(fmt.Sprintf("%s-%s", filepath.Base(repoRoot), spaces.SlugifyBranch(arg)))
+	}
 	return nil
 }

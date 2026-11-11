@@ -213,6 +213,16 @@ func (h *herdrBackend) AddTabs(space Space, tabs []config.Tab, env map[string]st
 			}
 		}
 
+		if tab.AgentName != "" {
+			if kind, args, ok := config.AgentKind(tab.Cmd); ok {
+				if err := h.startAgent(pane, tab, kind, args); err != nil {
+					return fmt.Errorf("tab %q: %w", tab.Name, err)
+				}
+				continue
+			}
+		}
+
+		tab = tab.InlinePrompt()
 		if tab.Cmd != "" {
 			if err := h.call(nil, "pane", "run", pane, tab.Cmd); err != nil {
 				return err
@@ -242,6 +252,46 @@ func (h *herdrBackend) AddTabs(space Space, tabs []config.Tab, env map[string]st
 		}
 	}
 	return nil
+}
+
+// agentReadyTimeout bounds how long remux waits for an agent that is blocked
+// at startup (e.g. a folder trust dialog) before giving up on the prompt.
+// Kept short so callers (often other agents) aren't stuck waiting on a human.
+const agentReadyTimeout = 2 * time.Minute
+
+// startAgent starts a named herdr agent in the pane and submits the prompt
+// through `agent prompt`. Naming the agent lets callers follow up with
+// `herdr agent prompt|read|wait <name>`.
+func (h *herdrBackend) startAgent(pane string, tab config.Tab, kind string, args []string) error {
+	name := tab.AgentName
+	start := []string{"agent", "start", name, "--kind", kind, "--pane", pane}
+	if len(args) > 0 {
+		start = append(append(start, "--"), args...)
+	}
+	err := h.call(nil, start...)
+	if err != nil && !strings.Contains(err.Error(), "agent_not_ready") {
+		return err
+	}
+
+	prompt := strings.TrimSpace(tab.Prompt)
+	if err != nil {
+		// Blocked at startup; the name stays reserved for the pane
+		if prompt == "" {
+			fmt.Printf("agent %q is waiting for input before it is ready; see: herdr agent read %s\n", name, name)
+			return nil
+		}
+		fmt.Printf("agent %q is waiting for input (e.g. a trust prompt); answer it in herdr to continue...\n", name)
+		ms := strconv.FormatInt(agentReadyTimeout.Milliseconds(), 10)
+		if err := h.call(nil, "agent", "wait", name, "--until", "idle", "--until", "done", "--timeout", ms); err != nil {
+			return fmt.Errorf("agent %q is still blocked at startup, prompt not sent; answer it in herdr (herdr agent read %s), then send the prompt with: herdr agent prompt %s \"...\": %w", name, name, name, err)
+		}
+	}
+	fmt.Printf("started agent %q\n", name)
+
+	if prompt == "" {
+		return nil
+	}
+	return h.call(nil, "agent", "prompt", name, prompt)
 }
 
 func (h *herdrBackend) Focus(space Space) error {

@@ -2,36 +2,25 @@ package spaces
 
 import (
 	"testing"
-
-	"github.com/johanhenriksson/remux/config"
 )
 
-func TestInlinePrompt(t *testing.T) {
+func TestAgentName(t *testing.T) {
 	cases := []struct {
-		name    string
-		tab     config.Tab
-		wantCmd string
-		wantPro string
+		branch, space, want string
 	}{
-		{"claude", config.Tab{Cmd: "claude", Prompt: "create mything"}, "claude 'create mything'", ""},
-		{"claude with flags", config.Tab{Cmd: "claude --model opus", Prompt: "go"}, "claude --model opus 'go'", ""},
-		{"codex", config.Tab{Cmd: "codex", Prompt: "go"}, "codex 'go'", ""},
-		{"quotes escaped", config.Tab{Cmd: "claude", Prompt: "it's fine"}, `claude 'it'\''s fine'`, ""},
-		{"non-agent untouched", config.Tab{Cmd: "nvim .", Prompt: "typed"}, "nvim .", "typed"},
-		{"no prompt", config.Tab{Cmd: "claude"}, "claude", ""},
-		{"no cmd", config.Tab{Prompt: "typed"}, "", "typed"},
+		{"me/abc-123-add-search", "app-x", "abc-123"},
+		{"ABC-12-fix", "", "abc-12"},
+		{"fix-login-2", "", "fix-login-2"},
+		{"feat/my-feature", "", "feat-my-feature"},
+		{"herdr-backend", "", "herdr-backend"},
+		{"2024-cleanup", "", "agent-2024-cleanup"},
+		{"a-very-long-branch-name-that-goes-on-and-on-forever", "", "a-very-long-branch-name-that-goe"},
+		{"", "remux-herdr", "remux-herdr"},
 	}
-
 	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := inlinePrompt(tc.tab)
-			if got.Cmd != tc.wantCmd {
-				t.Errorf("cmd: got %q, want %q", got.Cmd, tc.wantCmd)
-			}
-			if got.Prompt != tc.wantPro {
-				t.Errorf("prompt: got %q, want %q", got.Prompt, tc.wantPro)
-			}
-		})
+		if got := AgentName(tc.branch, tc.space); got != tc.want {
+			t.Errorf("AgentName(%q, %q) = %q, want %q", tc.branch, tc.space, got, tc.want)
+		}
 	}
 }
 

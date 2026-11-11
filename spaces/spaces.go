@@ -3,6 +3,7 @@ package spaces
 import (
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/johanhenriksson/remux/backend"
@@ -13,6 +14,7 @@ import (
 // Space represents a loaded workspace with config.
 type Space struct {
 	Name     string
+	Branch   string
 	Path     string
 	Port     int
 	RepoRoot string
@@ -51,6 +53,7 @@ func Open(worktreePath string) (*Space, error) {
 
 	space := &Space{
 		Name:         entry.Name,
+		Branch:       entry.Branch,
 		Path:         entry.Path,
 		Port:         entry.Port,
 		RepoRoot:     entry.RepoRoot,
@@ -84,6 +87,23 @@ func (s *Space) RunOnDrop() error {
 // ResolveEnv evaluates template expressions in config env vars.
 func (s *Space) ResolveEnv() (map[string]string, error) {
 	return s.config.ResolveEnv(s.configSpace())
+}
+
+// SessionEnv returns the env every shell in the space's session should see:
+// the resolved config env plus SPACE_PORT.
+func (s *Space) SessionEnv() (map[string]string, error) {
+	env, err := s.ResolveEnv()
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve config env vars: %w", err)
+	}
+	if env == nil {
+		env = make(map[string]string)
+	}
+	// todo: maybe no longer required?
+	if _, ok := env["SPACE_PORT"]; !ok {
+		env["SPACE_PORT"] = strconv.Itoa(s.Port)
+	}
+	return env, nil
 }
 
 // Agent returns the configured agent for this space, if any.

@@ -145,6 +145,24 @@ var _ = Describe("Create", func() {
 		Expect(entry.Name).To(Equal(filepath.Base(testRepoDir) + "-feat-my-feature"))
 	})
 
+	It("uses the workspace name override for directory and registry", func() {
+		worktreePath, err := spaces.Create(spaces.CreateOptions{
+			RepoRoot:   testRepoDir,
+			DestDir:    destDir,
+			BranchName: "me/abc-123-add-search",
+			Name:       "abc-123",
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(worktreePath).To(Equal(filepath.Join(destDir, filepath.Base(testRepoDir)+"-abc-123")))
+
+		reg, err := registry.Load(destDir)
+		Expect(err).NotTo(HaveOccurred())
+		entry := reg.Get(filepath.Base(worktreePath))
+		Expect(entry).NotTo(BeNil())
+		Expect(entry.Branch).To(Equal("me/abc-123-add-search"))
+		Expect(entry.SetupPending).To(BeTrue())
+	})
+
 	It("returns an error when not in a git repository", func() {
 		nonGitDir, err := os.MkdirTemp("", "non-git-*")
 		Expect(err).NotTo(HaveOccurred())

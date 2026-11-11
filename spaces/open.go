@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
+	"regexp"
 	"strings"
 
 	"github.com/johanhenriksson/remux/config"
@@ -14,12 +14,16 @@ import (
 
 // OpenSessionOptions contains the parameters for opening a space session.
 type OpenSessionOptions struct {
-	DestDir string            // Worktree directory
-	Name    string            // Name of the space to open
-	Prompt  string            // Initial prompt for the agent, also available to tab templates
-	Agent   string            // Agent to run in the first tab (overrides config, default: claude)
-	EnvVars map[string]string // Extra session environment variables (optional)
-	Detach  bool              // Create session without attaching
+	DestDir string // Worktree directory
+	Name    string // Name of the space to open
+	Prompt  string // Initial prompt for the agent, also available to tab templates
+	Agent   string // Agent to run in the first tab (overrides config, default: claude)
+	// AgentName names the agent in backends that track agents (herdr).
+	// Default: derived from the branch, see AgentName.
+	AgentName string
+	NoTabs    bool              // Skip configured tabs; only the agent tab is opened
+	EnvVars   map[string]string // Extra session environment variables (optional)
+	Detach    bool              // Create session without attaching
 }
 
 // OpenSession opens the space's session in its configured backend.
@@ -56,17 +60,10 @@ func OpenSession(opts OpenSessionOptions) error {
 	}
 	bs := space.backendSpace()
 
-	// Resolved config env plus SPACE_PORT, the env every session shell sees
-	spaceEnv, err := space.ResolveEnv()
+	// The env every session shell sees
+	spaceEnv, err := space.SessionEnv()
 	if err != nil {
-		return fmt.Errorf("failed to resolve config env vars: %w", err)
-	}
-	if spaceEnv == nil {
-		spaceEnv = make(map[string]string)
-	}
-	// todo: maybe no longer required?
-	if _, ok := spaceEnv["SPACE_PORT"]; !ok {
-		spaceEnv["SPACE_PORT"] = strconv.Itoa(space.Port)
+		return err
 	}
 
 	env := make(map[string]string, len(opts.EnvVars)+len(spaceEnv))
@@ -92,21 +89,26 @@ func OpenSession(opts OpenSessionOptions) error {
 	}
 
 	// Get configured tabs
-	tabs, err := space.Tabs(opts.Prompt)
-	if err != nil {
-		return fmt.Errorf("failed to resolve tabs: %w", err)
+	var tabs []config.Tab
+	if !opts.NoTabs {
+		tabs, err = space.Tabs(opts.Prompt)
+		if err != nil {
+			return fmt.Errorf("failed to resolve tabs: %w", err)
+		}
 	}
 
-	// The agent runs in the first tab; configured tabs come after it
+	// The agent runs in the first tab; configured tabs come after it. Backends
+	// decide how to deliver prompts (inline argument or typed/pasted).
 	agent := opts.Agent
 	if agent == "" {
 		agent = space.Agent()
 	}
 	if tab, ok := agentTab(agent, opts.Prompt); ok {
+		tab.AgentName = opts.AgentName
+		if tab.AgentName == "" {
+			tab.AgentName = AgentName(space.Branch, space.Name)
+		}
 		tabs = append([]config.Tab{tab}, tabs...)
-	}
-	for i := range tabs {
-		tabs[i] = inlinePrompt(tabs[i])
 	}
 
 	// Create an empty, unfocused session so we can set up tabs before focusing
@@ -198,23 +200,31 @@ func agentTab(agent, prompt string) (config.Tab, bool) {
 	}, true
 }
 
-// inlinePrompt moves a tab's prompt into its command line when the command is
-// an agent that accepts a positional prompt. Returns the tab unchanged
-// otherwise.
-func inlinePrompt(tab config.Tab) config.Tab {
-	prompt := strings.TrimSpace(tab.Prompt)
-	fields := strings.Fields(tab.Cmd)
-	if prompt == "" || len(fields) == 0 {
-		return tab
-	}
-	if _, known := agentCommands[filepath.Base(fields[0])]; !known {
-		return tab
-	}
-	tab.Cmd += " " + shellQuote(prompt)
-	tab.Prompt = ""
-	return tab
-}
+var ticketID = regexp.MustCompile(`[a-z][a-z0-9]*-[0-9]+`)
+var nonAgentChars = regexp.MustCompile(`[^a-z0-9_-]+`)
 
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+// maxAgentName is herdr's limit for agent names ([a-z][a-z0-9_-]{0,31}).
+const maxAgentName = 32
+
+// AgentName derives an agent name from a branch: the ticket id when the
+// branch contains one (me/abc-123-search -> abc-123), otherwise a slug
+// of the branch, falling back to the space name.
+func AgentName(branch, spaceName string) string {
+	source := strings.ToLower(branch)
+	if source == "" {
+		source = strings.ToLower(spaceName)
+	}
+	for _, part := range strings.Split(source, "/") {
+		if m := ticketID.FindString(part); m != "" && strings.HasPrefix(part, m) {
+			return m
+		}
+	}
+	slug := strings.Trim(nonAgentChars.ReplaceAllString(source, "-"), "-_")
+	if slug == "" || slug[0] < 'a' || slug[0] > 'z' {
+		slug = "agent-" + slug
+	}
+	if len(slug) > maxAgentName {
+		slug = strings.TrimRight(slug[:maxAgentName], "-_")
+	}
+	return slug
 }
