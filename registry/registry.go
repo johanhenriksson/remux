@@ -119,6 +119,25 @@ func (r *Registry) AllocatePort() int {
 	}
 }
 
+// GetByPath returns the entry whose worktree path is path, comparing
+// symlink-resolved paths, or nil if not found.
+func (r *Registry) GetByPath(path string) *Entry {
+	want := normalizePath(path)
+	for i, s := range r.Spaces {
+		if normalizePath(s.Path) == want {
+			return &r.Spaces[i]
+		}
+	}
+	return nil
+}
+
+func normalizePath(p string) string {
+	if resolved, err := filepath.EvalSymlinks(p); err == nil {
+		return resolved
+	}
+	return filepath.Clean(p)
+}
+
 // GetByBranch returns a pointer to the entry with the given branch name, or nil if not found.
 func (r *Registry) GetByBranch(branch string) *Entry {
 	for i, s := range r.Spaces {

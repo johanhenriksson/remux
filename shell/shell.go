@@ -86,7 +86,7 @@ func SpaceEnv(dir string) (map[string]string, error) {
 	}
 	// Worktrees not managed by remux have no registry entry next to them
 	reg, err := registry.Load(filepath.Dir(root))
-	if err != nil || reg.Get(filepath.Base(root)) == nil {
+	if err != nil || (reg.GetByPath(root) == nil && reg.Get(filepath.Base(root)) == nil) {
 		return nil, nil
 	}
 	space, err := spaces.Open(root)

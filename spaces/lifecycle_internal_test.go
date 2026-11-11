@@ -180,3 +180,61 @@ tabs:
 		t.Fatal("worktree not removed")
 	}
 }
+
+// A worktree adopted from another tool keeps its directory but is registered
+// under a different name; its env (space.ID) must follow the registry name.
+func TestAdoptedWorktree(t *testing.T) {
+	repo := t.TempDir()
+	dest := t.TempDir()
+	runGit(t, repo, "init", "-q")
+	runGit(t, repo, "config", "user.email", "t@t")
+	runGit(t, repo, "config", "user.name", "t")
+	cfg := "backend: fake\nagent: none\nenv:\n  DB_NAME: \"{{ space.ID }}\"\nhooks:\n  on_drop:\n    - echo $DB_NAME > " + filepath.Join(dest, "dropped") + "\n"
+	if err := os.WriteFile(filepath.Join(repo, ".remux.yaml"), []byte(cfg), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo, "add", ".")
+	runGit(t, repo, "commit", "-q", "-m", "init")
+	path := filepath.Join(dest, "johanh-ait-1-long-branch-name")
+	runGit(t, repo, "worktree", "add", "-q", "-b", "johanh/ait-1-long-branch-name", path)
+
+	reg := &registry.Registry{}
+	reg.Add("repo-ait-1", "johanh/ait-1-long-branch-name", path, 12020, repo)
+	if err := reg.Save(dest); err != nil {
+		t.Fatal(err)
+	}
+
+	var events []string
+	fake := &recordingBackend{events: &events, open: true}
+	newBackend = func(string) (backend.Backend, error) { return fake, nil }
+	defer func() { newBackend = backend.New }()
+
+	space, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, err := space.SessionEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if space.Name != "repo-ait-1" || env["DB_NAME"] != "repo_ait_1" || env["SPACE_PORT"] != "12020" {
+		t.Fatalf("adopted space: name=%q env=%v", space.Name, env)
+	}
+
+	// open by registry name finds the worktree despite the directory name
+	if err := OpenSession(OpenSessionOptions{DestDir: dest, Name: "repo-ait-1", Detach: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Drop(path, true); err != nil {
+		t.Fatal(err)
+	}
+	dropped, _ := os.ReadFile(filepath.Join(dest, "dropped"))
+	if strings.TrimSpace(string(dropped)) != "repo_ait_1" {
+		t.Fatalf("on_drop saw DB_NAME=%q", dropped)
+	}
+	reg, _ = registry.Load(dest)
+	if len(reg.List()) != 0 {
+		t.Fatalf("entry not unregistered: %v", reg.List())
+	}
+}
