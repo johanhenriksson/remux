@@ -28,6 +28,7 @@ type CreateOptions struct {
 	RepoRoot            string // Git repository root
 	DestDir             string // Destination directory for worktrees
 	BranchName          string // Name of the branch to create
+	Name                string // Workspace name (default: branch name); prefixed with the repo name
 	BaseBranch          string // Base branch to create from (empty = current HEAD)
 	ReuseExistingBranch bool   // If true, reuse existing branch instead of erroring
 }
@@ -39,7 +40,11 @@ type CreateOptions struct {
 // Returns the worktree path on success.
 func Create(opts CreateOptions) (string, error) {
 	repoName := filepath.Base(opts.RepoRoot)
-	spaceName := fmt.Sprintf("%s-%s", repoName, SlugifyBranch(opts.BranchName))
+	name := opts.Name
+	if name == "" {
+		name = opts.BranchName
+	}
+	spaceName := fmt.Sprintf("%s-%s", repoName, SlugifyBranch(name))
 	worktreePath := filepath.Join(opts.DestDir, spaceName)
 
 	if _, err := os.Stat(worktreePath); err == nil {
@@ -84,11 +89,10 @@ func Create(opts CreateOptions) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to load registry: %w", err)
 	}
-	name := filepath.Base(worktreePath)
-	reg.Add(name, opts.BranchName, worktreePath, reg.AllocatePort(), opts.RepoRoot)
+	reg.Add(spaceName, opts.BranchName, worktreePath, reg.AllocatePort(), opts.RepoRoot)
 	// on_create hooks run when the first session is opened, after the backend
 	// session exists and before tabs (dev servers etc.) start.
-	reg.Get(name).SetupPending = true
+	reg.Get(spaceName).SetupPending = true
 	if err := reg.Save(opts.DestDir); err != nil {
 		return "", fmt.Errorf("failed to save registry: %w", err)
 	}

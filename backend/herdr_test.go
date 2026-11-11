@@ -258,3 +258,83 @@ func TestNewBackend(t *testing.T) {
 		t.Fatal("expected error for unknown backend")
 	}
 }
+
+func addTabsFake(extra map[string][]string) (*fakeHerdr, *herdrBackend) {
+	responses := map[string][]string{
+		"worktree list": {worktreeList("/wt/repo-feat", "w4")},
+		"pane list":     {`{"result":{"panes":[{"pane_id":"w4:p2","tab_id":"w4:t2"}]}}`},
+	}
+	for k, v := range extra {
+		responses[k] = v
+	}
+	return newFake(responses)
+}
+
+func TestHerdrAgentTabPastesPrompt(t *testing.T) {
+	f, b := addTabsFake(nil)
+	long := strings.Repeat("do the thing. ", 500) // a delegation-sized prompt
+	tabs := []config.Tab{{Name: "claude", Cmd: "claude --permission-mode auto", Prompt: long, AgentName: "ait-1"}}
+	if err := b.AddTabs(testSpace, tabs, nil); err != nil {
+		t.Fatal(err)
+	}
+	expectCalls(t, f,
+		"worktree list --cwd /repo",
+		"pane list --workspace w4",
+		"tab rename w4:t2 claude",
+		"agent start ait-1 --kind claude --pane w4:p2 -- --permission-mode auto",
+		"agent prompt ait-1 "+strings.TrimSpace(long),
+	)
+}
+
+func TestHerdrAgentTabWaitsWhenBlocked(t *testing.T) {
+	f, b := addTabsFake(map[string][]string{
+		"agent start": {`error:{"error":{"code":"agent_not_ready"}}`},
+	})
+	tabs := []config.Tab{{Name: "codex", Cmd: "codex", Prompt: "go", AgentName: "feat"}}
+	if err := b.AddTabs(testSpace, tabs, nil); err != nil {
+		t.Fatal(err)
+	}
+	expectCalls(t, f,
+		"worktree list --cwd /repo",
+		"pane list --workspace w4",
+		"tab rename w4:t2 codex",
+		"agent start feat --kind codex --pane w4:p2",
+		"agent wait feat --until idle --until done --timeout 120000",
+		"agent prompt feat go",
+	)
+}
+
+func TestHerdrAgentTabBlockedWithoutPrompt(t *testing.T) {
+	f, b := addTabsFake(map[string][]string{
+		"agent start": {`error:agent_not_ready`},
+	})
+	tabs := []config.Tab{{Name: "claude", Cmd: "claude", AgentName: "feat"}}
+	if err := b.AddTabs(testSpace, tabs, nil); err != nil {
+		t.Fatal(err)
+	}
+	if last := f.commands()[len(f.calls)-1]; last != "agent start feat --kind claude --pane w4:p2" {
+		t.Fatalf("expected no wait without a prompt, last call %q", last)
+	}
+}
+
+func TestHerdrAgentStartError(t *testing.T) {
+	_, b := addTabsFake(map[string][]string{
+		"agent start": {`error:agent_name_taken`},
+	})
+	tabs := []config.Tab{{Name: "claude", Cmd: "claude", Prompt: "go", AgentName: "feat"}}
+	if err := b.AddTabs(testSpace, tabs, nil); err == nil || !strings.Contains(err.Error(), "agent_name_taken") {
+		t.Fatalf("expected start error, got %v", err)
+	}
+}
+
+func TestHerdrUnknownAgentCommandRunsInline(t *testing.T) {
+	f, b := addTabsFake(nil)
+	tabs := []config.Tab{{Name: "aider", Cmd: "aider --yes", Prompt: "hi", AgentName: "feat"}}
+	if err := b.AddTabs(testSpace, tabs, nil); err != nil {
+		t.Fatal(err)
+	}
+	got := f.commands()
+	if got[3] != "pane run w4:p2 aider --yes" || got[4] != "pane send-text w4:p2 hi" {
+		t.Fatalf("unexpected calls %q", got)
+	}
+}
