@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/johanhenriksson/remux/backend"
 	"github.com/johanhenriksson/remux/registry"
-	"github.com/johanhenriksson/remux/tmux"
 	"github.com/spf13/cobra"
 )
 
@@ -36,15 +36,16 @@ func runNav(direction int) func(*cobra.Command, []string) error {
 	}
 }
 
-// navigate switches to the next or previous active remux session.
-// direction should be +1 or -1.
+// navigate switches to the next or previous active remux session in the
+// backend the caller runs inside. direction should be +1 or -1.
 func navigate(direction int) error {
 	dest, err := getPath()
 	if err != nil {
 		return err
 	}
 
-	targets, err := activeRemuxSessions(dest)
+	b := backend.Detect()
+	targets, err := activeRemuxSessions(b, dest)
 	if err != nil {
 		return err
 	}
@@ -54,13 +55,18 @@ func navigate(direction int) error {
 		return nil
 	}
 
-	if !tmux.InSession() {
-		// Outside tmux: attach to first (next) or last (prev) session
+	current, inside, err := b.Current(targets)
+	if err != nil {
+		return err
+	}
+
+	if !inside {
+		// Outside the backend: attach to first (next) or last (prev) session
 		target := targets[0]
 		if direction < 0 {
 			target = targets[len(targets)-1]
 		}
-		return tmux.Attach(target)
+		return b.Focus(target)
 	}
 
 	if len(targets) == 1 {
@@ -68,21 +74,18 @@ func navigate(direction int) error {
 		return nil
 	}
 
-	current, err := tmux.CurrentSession()
-	if err != nil {
-		return fmt.Errorf("failed to get current session: %w", err)
-	}
-
 	// Find current session index
 	index := -1
-	for i, name := range targets {
-		if name == current {
-			index = i
-			break
+	if current != nil {
+		for i, t := range targets {
+			if t.Name == current.Name {
+				index = i
+				break
+			}
 		}
 	}
 
-	var next string
+	var next backend.Space
 	if index < 0 {
 		// Current session isn't a remux session; jump to first
 		next = targets[0]
@@ -90,35 +93,26 @@ func navigate(direction int) error {
 		next = targets[(index+direction+len(targets))%len(targets)]
 	}
 
-	return tmux.SwitchTo(next)
+	return b.Focus(next)
 }
 
-// activeRemuxSessions returns sorted sanitized names of registry entries
-// that have an active tmux session.
-func activeRemuxSessions(destDir string) ([]string, error) {
+// activeRemuxSessions returns registry entries that have a live session in
+// the given backend, sorted by name.
+func activeRemuxSessions(b backend.Backend, destDir string) ([]backend.Space, error) {
 	reg, err := registry.Load(destDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load registry: %w", err)
 	}
 
-	sessions, err := tmux.ListSessions()
-	if err != nil {
-		return nil, fmt.Errorf("failed to list tmux sessions: %w", err)
-	}
-
-	active := make(map[string]bool, len(sessions))
-	for _, s := range sessions {
-		active[s] = true
-	}
-
-	var targets []string
+	var targets []backend.Space
 	for _, entry := range reg.List() {
-		name := tmux.SessionName(entry.Name)
-		if active[name] {
-			targets = append(targets, name)
+		space := backend.Space{Name: entry.Name, Path: entry.Path, RepoRoot: entry.RepoRoot}
+		// Entries the backend can't inspect (e.g. deleted repos) count as inactive
+		if active, err := b.Exists(space); err == nil && active {
+			targets = append(targets, space)
 		}
 	}
 
-	sort.Strings(targets)
+	sort.Slice(targets, func(i, j int) bool { return targets[i].Name < targets[j].Name })
 	return targets, nil
 }

@@ -6,11 +6,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/johanhenriksson/remux/config"
 	"github.com/johanhenriksson/remux/git"
-	"github.com/johanhenriksson/remux/tmux"
+	"github.com/johanhenriksson/remux/registry"
 )
 
 // OpenSessionOptions contains the parameters for opening a space session.
@@ -19,12 +18,14 @@ type OpenSessionOptions struct {
 	Name    string            // Name of the space to open
 	Prompt  string            // Initial prompt for the agent, also available to tab templates
 	Agent   string            // Agent to run in the first tab (overrides config, default: claude)
-	EnvVars map[string]string // Session-level environment variables (optional)
+	EnvVars map[string]string // Extra session environment variables (optional)
 	Detach  bool              // Create session without attaching
 }
 
-// OpenSession opens a tmux session in the specified space.
-// If a session with that name already exists, it attaches to it.
+// OpenSession opens the space's session in its configured backend.
+// If a session already exists, it focuses it. Otherwise it creates the
+// session, runs on_create hooks if the space is new, runs on_open hooks, adds
+// tabs and focuses the session (unless Detach is set).
 func OpenSession(opts OpenSessionOptions) error {
 	spacePath := filepath.Join(opts.DestDir, opts.Name)
 
@@ -49,35 +50,45 @@ func OpenSession(opts OpenSessionOptions) error {
 		return err
 	}
 
-	if opts.EnvVars == nil {
-		opts.EnvVars = make(map[string]string)
+	b, err := space.Backend()
+	if err != nil {
+		return err
 	}
+	bs := space.backendSpace()
 
-	// todo: maybe no longer required?
-	opts.EnvVars["SPACE_PORT"] = strconv.Itoa(space.Port)
-
-	// Merge config env vars
-	resolved, err := space.ResolveEnv()
+	// Resolved config env plus SPACE_PORT, the env every session shell sees
+	spaceEnv, err := space.ResolveEnv()
 	if err != nil {
 		return fmt.Errorf("failed to resolve config env vars: %w", err)
 	}
-	for key, value := range resolved {
-		opts.EnvVars[key] = value
+	if spaceEnv == nil {
+		spaceEnv = make(map[string]string)
+	}
+	// todo: maybe no longer required?
+	if _, ok := spaceEnv["SPACE_PORT"]; !ok {
+		spaceEnv["SPACE_PORT"] = strconv.Itoa(space.Port)
 	}
 
-	// Run on_open hooks
-	if err := space.RunOnOpen(); err != nil {
-		return err
+	env := make(map[string]string, len(opts.EnvVars)+len(spaceEnv))
+	for key, value := range opts.EnvVars {
+		env[key] = value
+	}
+	for key, value := range spaceEnv {
+		env[key] = value
 	}
 
-	if tmux.SessionExists(opts.Name) {
+	exists, err := b.Exists(bs)
+	if err != nil {
+		return fmt.Errorf("%s: %w", b.Name(), err)
+	}
+	if exists {
+		if err := space.RunOnOpen(); err != nil {
+			return err
+		}
 		if opts.Detach {
 			return nil
 		}
-		if tmux.InSession() {
-			return tmux.SwitchTo(opts.Name)
-		}
-		return tmux.Attach(opts.Name)
+		return b.Focus(bs)
 	}
 
 	// Get configured tabs
@@ -94,25 +105,65 @@ func OpenSession(opts OpenSessionOptions) error {
 	if tab, ok := agentTab(agent, opts.Prompt); ok {
 		tabs = append([]config.Tab{tab}, tabs...)
 	}
+	for i := range tabs {
+		tabs[i] = inlinePrompt(tabs[i])
+	}
 
-	// Create session detached so we can set up tabs before attaching
-	if err := tmux.NewSessionDetached(opts.Name, spacePath, opts.EnvVars); err != nil {
+	// Create an empty, unfocused session so we can set up tabs before focusing
+	if err := b.Create(bs, env); err != nil {
 		return err
 	}
 
-	if err := setupTabs(opts.Name, spacePath, tabs); err != nil {
+	// First session for a new space: run setup before tabs start
+	if space.SetupPending {
+		if err := setup(space, spaceEnv); err != nil {
+			return err
+		}
+	}
+
+	if err := space.RunOnOpen(); err != nil {
+		_ = b.Close(bs)
+		return err
+	}
+
+	if err := b.AddTabs(bs, tabs, env); err != nil {
 		return fmt.Errorf("failed to setup tabs: %w", err)
 	}
 
 	if opts.Detach {
 		return nil
 	}
+	return b.Focus(bs)
+}
 
-	// Attach or switch to session
-	if tmux.InSession() {
-		return tmux.SwitchTo(opts.Name)
+// setup writes the env file and runs on_create hooks for a newly created
+// space, then clears its pending flag. Hook failures are warnings.
+func setup(space *Space, env map[string]string) error {
+	if path := space.EnvFile(); path != "" {
+		if err := config.WriteEnvFile(path, env); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to write env file: %v\n", err)
+		}
 	}
-	return tmux.Attach(opts.Name)
+	space.RunOnCreate()
+
+	destDir := filepath.Dir(space.Path)
+	unlock, err := registry.Lock(destDir)
+	if err != nil {
+		return fmt.Errorf("failed to lock registry: %w", err)
+	}
+	defer unlock()
+	reg, err := registry.Load(destDir)
+	if err != nil {
+		return fmt.Errorf("failed to load registry: %w", err)
+	}
+	if entry := reg.Get(space.Name); entry != nil {
+		entry.SetupPending = false
+	}
+	if err := reg.Save(destDir); err != nil {
+		return fmt.Errorf("failed to save registry: %w", err)
+	}
+	space.SetupPending = false
+	return nil
 }
 
 // agentCommands maps known agent names to the command that starts them. These
@@ -166,55 +217,4 @@ func inlinePrompt(tab config.Tab) config.Tab {
 
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
-}
-
-// setupTabs configures tmux windows based on tab configuration.
-func setupTabs(session, workdir string, tabs []config.Tab) error {
-	for i, tab := range tabs {
-		tab = inlinePrompt(tab)
-
-		if i == 0 {
-			// First tab uses the default window (active after session creation)
-			if tab.Name != "" {
-				if err := tmux.RenameWindow(session, "", tab.Name); err != nil {
-					return err
-				}
-			}
-		} else {
-			// Create new windows for subsequent tabs
-			if err := tmux.NewWindow(session, workdir, tab.Name); err != nil {
-				return err
-			}
-		}
-
-		// Send command to the active window
-		if tab.Cmd != "" {
-			if err := tmux.SendKeys(session, "", tab.Cmd); err != nil {
-				return err
-			}
-		}
-
-		// Handle prompt/await
-		prompt := strings.TrimSpace(tab.Prompt)
-		if prompt != "" {
-			if tab.Await != "" {
-				timeout := time.Duration(tab.Timeout) * time.Second
-				if timeout == 0 {
-					timeout = 60 * time.Second
-				}
-				fmt.Printf("waiting for %q in tab %q...\n", tab.Await, tab.Name)
-				if err := tmux.AwaitText(session, "", tab.Await, timeout); err != nil {
-					return fmt.Errorf("tab %q: %w", tab.Name, err)
-				}
-			}
-			// Give TUI time to become interactive after awaited text appears
-			time.Sleep(1 * time.Second)
-			if err := tmux.SendText(session, "", prompt); err != nil {
-				return err
-			}
-		}
-	}
-
-	// Select the first window
-	return tmux.SelectWindow(session, "{start}")
 }

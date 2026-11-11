@@ -11,7 +11,6 @@ import (
 	"github.com/johanhenriksson/remux/git"
 	"github.com/johanhenriksson/remux/registry"
 	"github.com/johanhenriksson/remux/spaces"
-	"github.com/johanhenriksson/remux/tmux"
 	"github.com/spf13/cobra"
 )
 
@@ -46,11 +45,13 @@ func init() {
 	rootCmd.AddCommand(openCmd)
 	rootCmd.AddCommand(listCmd)
 
+	listCmd.Flags().StringVar(&pathDir, "path", "", "worktree directory (default: ~/.remux)")
 	newCmd.Flags().StringVar(&pathDir, "path", "", "destination directory for worktrees (default: ~/.remux)")
 	newCmd.Flags().BoolVarP(&detachFlag, "detach", "d", false, "create workspace without attaching to the session")
 	newCmd.Flags().StringVarP(&promptFlag, "prompt", "p", "", "initial prompt for the agent")
 	newCmd.Flags().StringVar(&agentFlag, "agent", "", "agent to run in the first tab (default: claude)")
 	openCmd.Flags().StringVar(&pathDir, "path", "", "worktree directory (default: ~/.remux)")
+	openCmd.Flags().BoolVarP(&detachFlag, "detach", "d", false, "open the session without attaching to it")
 	openCmd.Flags().StringVarP(&promptFlag, "prompt", "p", "", "initial prompt for the agent")
 	openCmd.Flags().StringVar(&agentFlag, "agent", "", "agent to run in the first tab (default: claude)")
 }
@@ -149,6 +150,7 @@ func runOpen(cmd *cobra.Command, args []string) error {
 		Name:    spaceName,
 		Prompt:  promptFlag,
 		Agent:   agentFlag,
+		Detach:  detachFlag,
 	})
 }
 
@@ -189,8 +191,10 @@ func runList(cmd *cobra.Command, args []string) error {
 			branch = "-"
 		}
 		status := "-"
-		if tmux.SessionExists(e.Name) {
-			status = "active"
+		if space, err := spaces.Open(e.Path); err == nil {
+			if active, err := space.SessionActive(); err == nil && active {
+				status = "active"
+			}
 		}
 		fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%s\n", e.Name, branch, e.Port, status, e.Path)
 	}

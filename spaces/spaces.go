@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/johanhenriksson/remux/backend"
 	"github.com/johanhenriksson/remux/config"
 	"github.com/johanhenriksson/remux/registry"
 )
@@ -15,7 +16,10 @@ type Space struct {
 	Path     string
 	Port     int
 	RepoRoot string
-	config   *config.Config
+	// SetupPending is true until the first session has been created and the
+	// on_create hooks have run.
+	SetupPending bool
+	config       *config.Config
 }
 
 // ID returns a sanitized identifier for the space (slashes and hyphens replaced with underscores).
@@ -46,11 +50,12 @@ func Open(worktreePath string) (*Space, error) {
 	}
 
 	space := &Space{
-		Name:     entry.Name,
-		Path:     entry.Path,
-		Port:     entry.Port,
-		RepoRoot: entry.RepoRoot,
-		config:   cfg,
+		Name:         entry.Name,
+		Path:         entry.Path,
+		Port:         entry.Port,
+		RepoRoot:     entry.RepoRoot,
+		SetupPending: entry.SetupPending,
+		config:       cfg,
 	}
 
 	return space, nil
@@ -91,4 +96,46 @@ func (s *Space) Tabs(prompt string) ([]config.Tab, error) {
 	cs := s.configSpace()
 	cs.Prompt = prompt
 	return s.config.ResolveTabs(cs)
+}
+
+// newBackend constructs backends; replaced in tests.
+var newBackend = backend.New
+
+// Backend returns the session backend configured for this space.
+func (s *Space) Backend() (backend.Backend, error) {
+	return newBackend(s.config.Backend)
+}
+
+// backendSpace returns the identifiers a backend needs for this space.
+func (s *Space) backendSpace() backend.Space {
+	return backend.Space{Name: s.Name, Path: s.Path, RepoRoot: s.RepoRoot}
+}
+
+// EnvFile returns the absolute path of the configured env file, or "" if none.
+func (s *Space) EnvFile() string {
+	if s.config.EnvFile == "" {
+		return ""
+	}
+	if filepath.IsAbs(s.config.EnvFile) {
+		return s.config.EnvFile
+	}
+	return filepath.Join(s.Path, s.config.EnvFile)
+}
+
+// SessionActive reports whether the space has a live backend session.
+func (s *Space) SessionActive() (bool, error) {
+	b, err := s.Backend()
+	if err != nil {
+		return false, err
+	}
+	return b.Exists(s.backendSpace())
+}
+
+// CloseSession ends the space's backend session, keeping the worktree.
+func (s *Space) CloseSession() error {
+	b, err := s.Backend()
+	if err != nil {
+		return err
+	}
+	return b.Close(s.backendSpace())
 }
