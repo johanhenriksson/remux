@@ -2,6 +2,7 @@ package registry_test
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -117,5 +118,19 @@ var _ = Describe("Registry", func() {
 			Expect(loaded.List()).To(HaveLen(1))
 			Expect(loaded.List()[0].Branch).To(Equal("feat/x"))
 		})
+	})
+})
+
+var _ = Describe("GetByPath", func() {
+	It("matches symlink-resolved paths", func() {
+		real := GinkgoT().TempDir()
+		link := filepath.Join(GinkgoT().TempDir(), "link")
+		Expect(os.Symlink(real, link)).To(Succeed())
+
+		reg := &registry.Registry{}
+		reg.Add("space", "branch", real, 11010, "/repo")
+		Expect(reg.GetByPath(link)).NotTo(BeNil())
+		Expect(reg.GetByPath(real + "/")).NotTo(BeNil())
+		Expect(reg.GetByPath("/elsewhere")).To(BeNil())
 	})
 })

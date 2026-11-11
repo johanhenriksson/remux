@@ -38,6 +38,7 @@ func Drop(worktreePath string, force bool) error {
 	space, openErr := Open(worktreePath)
 	var b backend.Backend
 	if openErr == nil {
+		spaceName = space.Name
 		b, err = space.Backend()
 	} else {
 		b, err = newBackend("")

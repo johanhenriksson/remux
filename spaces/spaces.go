@@ -41,7 +41,12 @@ func Open(worktreePath string) (*Space, error) {
 		return nil, fmt.Errorf("failed to load registry: %w", err)
 	}
 
-	entry := reg.Get(spaceName)
+	// Look up by path first: a space's name doesn't have to match its
+	// directory name (e.g. worktrees adopted from another tool)
+	entry := reg.GetByPath(worktreePath)
+	if entry == nil {
+		entry = reg.Get(spaceName)
+	}
 	if entry == nil {
 		return nil, fmt.Errorf("space not found: %s", spaceName)
 	}

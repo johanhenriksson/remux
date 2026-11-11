@@ -32,6 +32,12 @@ type OpenSessionOptions struct {
 // tabs and focuses the session (unless Detach is set).
 func OpenSession(opts OpenSessionOptions) error {
 	spacePath := filepath.Join(opts.DestDir, opts.Name)
+	// Registered spaces may live outside their directory name
+	if reg, err := registry.Load(opts.DestDir); err == nil {
+		if entry := reg.Get(opts.Name); entry != nil {
+			spacePath = entry.Path
+		}
+	}
 
 	info, err := os.Stat(spacePath)
 	if os.IsNotExist(err) {
