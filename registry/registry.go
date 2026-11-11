@@ -24,6 +24,9 @@ type Entry struct {
 	Path     string `yaml:"path"`
 	Port     int    `yaml:"port"`
 	RepoRoot string `yaml:"repo_root"`
+	// SetupPending is true from worktree creation until the first session has
+	// been created and the on_create hooks have run.
+	SetupPending bool `yaml:"setup_pending,omitempty"`
 }
 
 // Registry holds a list of tracked spaces.

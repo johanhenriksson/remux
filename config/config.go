@@ -23,10 +23,15 @@ type Tab struct {
 
 // Config represents a workspace configuration file.
 type Config struct {
-	Env   map[string]string `yaml:"env"`
-	Hooks Hooks             `yaml:"hooks"`
-	Agent string            `yaml:"agent"`
-	Tabs  []Tab             `yaml:"tabs"`
+	// Backend selects the session backend: "tmux" (default) or "herdr".
+	Backend string            `yaml:"backend"`
+	Env     map[string]string `yaml:"env"`
+	// EnvFile, when set, is a path relative to the worktree where the resolved
+	// env is written when the space is created (e.g. ".env.local").
+	EnvFile string `yaml:"env_file"`
+	Hooks   Hooks  `yaml:"hooks"`
+	Agent   string `yaml:"agent"`
+	Tabs    []Tab  `yaml:"tabs"`
 }
 
 // Hooks contains lifecycle hook commands.
@@ -112,6 +117,7 @@ func loadFile(path string) (*Config, error) {
 // merge returns a new Config combining base and override.
 // Env: maps are merged (override keys win, base-only keys preserved).
 // Tabs: replaced entirely if override defines any.
+// Agent, Backend, EnvFile: replaced if override sets them.
 // Hooks: replaced per hook type (on_create, on_open, on_drop are independent).
 func merge(base, override *Config) *Config {
 	result := *base
@@ -130,6 +136,12 @@ func merge(base, override *Config) *Config {
 
 	if override.Agent != "" {
 		result.Agent = override.Agent
+	}
+	if override.Backend != "" {
+		result.Backend = override.Backend
+	}
+	if override.EnvFile != "" {
+		result.EnvFile = override.EnvFile
 	}
 
 	// Replace tabs entirely

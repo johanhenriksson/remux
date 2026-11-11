@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/johanhenriksson/remux/backend"
 	"github.com/johanhenriksson/remux/registry"
 	"github.com/johanhenriksson/remux/tmux"
 )
@@ -38,7 +39,7 @@ func TestActiveRemuxSessions(t *testing.T) {
 	defer tmux.KillSession("space-a")
 	defer tmux.KillSession("space-b")
 
-	sessions, err := activeRemuxSessions(dir)
+	sessions, err := activeRemuxSessions(backend.NewTmux(), dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +48,7 @@ func TestActiveRemuxSessions(t *testing.T) {
 	if len(sessions) != 2 {
 		t.Fatalf("expected 2 active sessions, got %d: %v", len(sessions), sessions)
 	}
-	if sessions[0] != "space-a" || sessions[1] != "space-b" {
+	if sessions[0].Name != "space-a" || sessions[1].Name != "space-b" {
 		t.Fatalf("expected [space-a space-b], got %v", sessions)
 	}
 }
@@ -69,7 +70,7 @@ func TestActiveRemuxSessionsEmpty(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sessions, err := activeRemuxSessions(dir)
+	sessions, err := activeRemuxSessions(backend.NewTmux(), dir)
 	if err != nil {
 		t.Fatal(err)
 	}

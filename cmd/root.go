@@ -9,7 +9,7 @@ import (
 
 var rootCmd = &cobra.Command{
 	Use:   "remux",
-	Short: "Run multiple coding agents in parallel using git worktrees and tmux",
+	Short: "Run multiple coding agents in parallel using git worktrees and tmux or herdr",
 }
 
 func Execute() {

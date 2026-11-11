@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/johanhenriksson/remux/backend"
 	"github.com/johanhenriksson/remux/registry"
 	"github.com/johanhenriksson/remux/spaces"
 	"github.com/spf13/cobra"
@@ -72,13 +73,13 @@ func runDrop(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return nil
 	}
-	targets, err := activeRemuxSessions(dest)
+	targets, err := activeRemuxSessions(backend.Detect(), dest)
 	if err != nil || len(targets) == 0 {
 		return nil
 	}
 
 	target := targets[len(targets)-1]
-	fmt.Printf("Attach to %s? [Enter/Esc] ", target)
+	fmt.Printf("Attach to %s? [Enter/Esc] ", target.Name)
 
 	reader := bufio.NewReader(os.Stdin)
 	line, _ := reader.ReadString('\n')
