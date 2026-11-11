@@ -90,6 +90,20 @@ Pick the agent with `--agent`:
 remux new mything --agent codex -p "create mything"
 ```
 
+Other flags for scripted use (e.g. delegating work from another agent):
+
+| Flag | Effect |
+|------|--------|
+| `-d`, `--detach` | Don't attach to the session; returns once setup is done |
+| `--base <ref>` | Branch from this ref (e.g. `origin/main`) instead of the current HEAD |
+| `--reuse` | Reuse the branch without asking if it already exists |
+| `--name <name>` | Workspace name instead of the branch name (`--name abc-123` gives `repo-abc-123`). Keeps `{{ space.ID }}`-based database names short |
+| `--agent-name <name>` | herdr agent name (default: the ticket id in the branch, e.g. `abc-123`, otherwise a slug) |
+| `--no-tabs` | Only open the agent tab, not the configured tabs |
+
+`open`, `close` and `drop` accept the full workspace name, the branch, or the
+short name.
+
 ### Open an existing workspace
 
 ```bash
@@ -211,12 +225,39 @@ runs the interactive session:
   reaches every window, including ones you open by hand.
 - **herdr**: remux creates the worktree, then attaches it with
   `herdr worktree open`, so it shows up grouped under the repository's
-  workspace with its branch. Each tab is a herdr tab. herdr env only reaches the
-  process it launches, so remux passes env to every tab it creates, but tabs you
-  open by hand won't have it; use `env_file` for those. `remux close` closes the
-  herdr workspace and keeps the checkout. `remux next`/`prev` cycle through remux
+  workspace with its branch. Each tab is a herdr tab. The agent is started with
+  `herdr agent start` under a name (see `--agent-name`), so you can follow up
+  with `herdr agent prompt|read|wait <name>`. `remux close` closes the herdr
+  workspace and keeps the checkout. `remux next`/`prev` cycle through remux
   workspaces in herdr when run inside herdr. herdr will also open a workspace for
   the main checkout if none is open.
+
+#### Env in every herdr pane: remux-shell
+
+herdr env only reaches the process it launches, so remux passes env to every tab
+it creates, but tabs and splits you open by hand won't have it. `remux-shell`
+fixes that. It is a login shell wrapper that herdr starts for every pane: it
+adds the env of the remux workspace containing the pane's directory, then execs
+your login shell. Outside a workspace, or if anything goes wrong, it starts your
+shell unchanged.
+
+```bash
+remux herdr setup   # creates remux-shell next to the remux binary
+```
+
+then add the printed line to `~/.config/herdr/config.toml` and run
+`herdr server reload-config`:
+
+```toml
+[terminal]
+default_shell = "/Users/you/go/bin/remux-shell"
+```
+
+The env is read when each pane starts, so edits to `.remux.yaml` apply to new
+panes right away, and panes restored after a herdr restart get it too. Set
+`REMUX_SHELL` to override which shell it starts (default: your login shell).
+herdr can't open panes if `remux-shell` is missing, so remove the config line
+before uninstalling remux.
 
 ### Hooks
 
