@@ -23,6 +23,9 @@ type Tab struct {
 	// AgentName marks the tab running the workspace's agent and names it in
 	// backends that track agents (herdr). Not configurable.
 	AgentName string `yaml:"-"`
+	// AgentArgs are extra arguments for the agent command, unquoted (e.g. the
+	// workspace instructions). Backends quote them as needed. Not configurable.
+	AgentArgs []string `yaml:"-"`
 }
 
 // Config represents a workspace configuration file.
@@ -36,6 +39,12 @@ type Config struct {
 	Hooks   Hooks  `yaml:"hooks"`
 	Agent   string `yaml:"agent"`
 	Tabs    []Tab  `yaml:"tabs"`
+	// Instructions are appended to the agent's system prompt, after the
+	// built-in base instructions. Templated; {{ env.X }} sees the space env.
+	Instructions string `yaml:"instructions"`
+	// DefaultInstructions toggles the built-in base instructions. nil means
+	// enabled; a pointer so the local config can override in either direction.
+	DefaultInstructions *bool `yaml:"default_instructions"`
 }
 
 // Hooks contains lifecycle hook commands.
@@ -121,7 +130,8 @@ func loadFile(path string) (*Config, error) {
 // merge returns a new Config combining base and override.
 // Env: maps are merged (override keys win, base-only keys preserved).
 // Tabs: replaced entirely if override defines any.
-// Agent, Backend, EnvFile: replaced if override sets them.
+// Agent, Backend, EnvFile, Instructions: replaced if override sets them.
+// DefaultInstructions: replaced if override sets it (true or false).
 // Hooks: replaced per hook type (on_create, on_open, on_drop are independent).
 func merge(base, override *Config) *Config {
 	result := *base
@@ -146,6 +156,12 @@ func merge(base, override *Config) *Config {
 	}
 	if override.EnvFile != "" {
 		result.EnvFile = override.EnvFile
+	}
+	if override.Instructions != "" {
+		result.Instructions = override.Instructions
+	}
+	if override.DefaultInstructions != nil {
+		result.DefaultInstructions = override.DefaultInstructions
 	}
 
 	// Replace tabs entirely

@@ -32,7 +32,7 @@ func (tmuxBackend) AddTabs(space Space, tabs []config.Tab, env map[string]string
 	for i, tab := range tabs {
 		// Agents take the prompt as a positional argument; tmux has no
 		// line-length limit for send-keys.
-		tab = tab.InlinePrompt()
+		tab = tab.InlineArgs().InlinePrompt()
 
 		if i == 0 {
 			// First tab uses the default window (active after session creation)

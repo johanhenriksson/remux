@@ -338,3 +338,32 @@ func TestHerdrUnknownAgentCommandRunsInline(t *testing.T) {
 		t.Fatalf("unexpected calls %q", got)
 	}
 }
+
+func TestHerdrAgentTabPassesAgentArgsUnquoted(t *testing.T) {
+	f, b := addTabsFake(nil)
+	tabs := []config.Tab{{
+		Name: "claude", Cmd: "claude --permission-mode auto", Prompt: "go", AgentName: "feat",
+		AgentArgs: []string{"--append-system-prompt-file", "/repo/.git/worktrees/repo-feat/remux-instructions.md"},
+	}}
+	if err := b.AddTabs(testSpace, tabs, nil); err != nil {
+		t.Fatal(err)
+	}
+	start := f.calls[3]
+	want := []string{"agent", "start", "feat", "--kind", "claude", "--pane", "w4:p2", "--",
+		"--permission-mode", "auto", "--append-system-prompt-file", "/repo/.git/worktrees/repo-feat/remux-instructions.md"}
+	if !reflect.DeepEqual(start, want) {
+		t.Fatalf("agent start:\n got: %q\nwant: %q", start, want)
+	}
+}
+
+func TestHerdrAgentArgsKeepSpacesInOneArgument(t *testing.T) {
+	f, b := addTabsFake(nil)
+	tabs := []config.Tab{{Name: "codex", Cmd: "codex", AgentName: "feat", AgentArgs: []string{"-c", `developer_instructions="a b\nc"`}}}
+	if err := b.AddTabs(testSpace, tabs, nil); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"agent", "start", "feat", "--kind", "codex", "--pane", "w4:p2", "--", "-c", `developer_instructions="a b\nc"`}
+	if !reflect.DeepEqual(f.calls[3], want) {
+		t.Fatalf("agent start:\n got: %q\nwant: %q", f.calls[3], want)
+	}
+}

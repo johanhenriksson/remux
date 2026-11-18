@@ -26,6 +26,15 @@ func AgentKind(cmd string) (kind string, args []string, ok bool) {
 	return kind, fields[1:], true
 }
 
+// InlineArgs appends the tab's AgentArgs to its command line, shell-quoted.
+func (t Tab) InlineArgs() Tab {
+	for _, arg := range t.AgentArgs {
+		t.Cmd += " " + shellQuote(arg)
+	}
+	t.AgentArgs = nil
+	return t
+}
+
 // InlinePrompt moves the tab's prompt into its command line when the command
 // is an agent that accepts a positional prompt. Returns the tab unchanged
 // otherwise.

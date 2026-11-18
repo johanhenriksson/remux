@@ -12,7 +12,18 @@ import (
 var templatePattern = regexp.MustCompile(`\{\{\s*(.+?)\s*\}\}`)
 
 // EvaluateTemplate evaluates all {{ expr }} patterns in the input string.
+// {{ env.X }} reads the host process environment.
 func EvaluateTemplate(input string, space Space) (string, error) {
+	return EvaluateTemplateWithEnv(input, space, nil)
+}
+
+// EvaluateTemplateWithEnv is EvaluateTemplate with extra variables overlaid
+// on the host environment for {{ env.X }}, e.g. a space's resolved env.
+func EvaluateTemplateWithEnv(input string, space Space, overlay map[string]string) (string, error) {
+	hostEnv := getEnvMap()
+	for k, v := range overlay {
+		hostEnv[k] = v
+	}
 	env := map[string]any{
 		"space": map[string]any{
 			"Name":     space.Name,
@@ -22,7 +33,7 @@ func EvaluateTemplate(input string, space Space) (string, error) {
 			"RepoRoot": space.RepoRoot,
 		},
 		"prompt": space.Prompt,
-		"env":    getEnvMap(),
+		"env":    hostEnv,
 	}
 
 	var evalErr error

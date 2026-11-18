@@ -114,6 +114,9 @@ func OpenSession(opts OpenSessionOptions) error {
 		if tab.AgentName == "" {
 			tab.AgentName = AgentName(space.Branch, space.Name)
 		}
+		if err := applyInstructions(&tab, space, env); err != nil {
+			return err
+		}
 		tabs = append([]config.Tab{tab}, tabs...)
 	}
 

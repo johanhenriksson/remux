@@ -40,3 +40,18 @@ func TestAgentKind(t *testing.T) {
 		t.Fatal("nvim is not an agent")
 	}
 }
+
+func TestInlineArgs(t *testing.T) {
+	tab := Tab{Cmd: "claude --permission-mode auto", Prompt: "go", AgentArgs: []string{"--append-system-prompt-file", "/a dir/it's.md"}}
+	got := tab.InlineArgs().InlinePrompt()
+	want := `claude --permission-mode auto '--append-system-prompt-file' '/a dir/it'\''s.md' 'go'`
+	if got.Cmd != want {
+		t.Errorf("cmd: got %q, want %q", got.Cmd, want)
+	}
+	if got.AgentArgs != nil {
+		t.Errorf("args left on tab: %q", got.AgentArgs)
+	}
+	if plain := (Tab{Cmd: "nvim"}).InlineArgs(); plain.Cmd != "nvim" {
+		t.Errorf("no args: got %q", plain.Cmd)
+	}
+}
