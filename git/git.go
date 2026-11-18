@@ -133,3 +133,15 @@ func GetMainRepoPath(worktreePath string) (string, error) {
 	// Return the parent of .git
 	return filepath.Dir(gitDir), nil
 }
+
+// GitPath returns the absolute path of name inside the git dir of the
+// checkout at path (`git rev-parse --git-path`). For a worktree this is its
+// private dir under the main repo's .git/worktrees, outside the work tree.
+func GitPath(path, name string) (string, error) {
+	cmd := exec.Command("git", "-C", path, "rev-parse", "--path-format=absolute", "--git-path", name)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("git rev-parse --git-path %s: %w", name, err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}

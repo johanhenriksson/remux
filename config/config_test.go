@@ -410,4 +410,24 @@ var _ = Describe("Template", func() {
 			Expect(err).To(HaveOccurred())
 		})
 	})
+
+	Describe("EvaluateTemplateWithEnv", func() {
+		ctx := config.Space{Name: "test-space"}
+
+		It("overlays the given env on the host env", func() {
+			GinkgoT().Setenv("REMUX_TEST_A", "host-a")
+			GinkgoT().Setenv("REMUX_TEST_B", "host-b")
+			result, err := config.EvaluateTemplateWithEnv("{{ env.REMUX_TEST_A }} {{ env.REMUX_TEST_B }}", ctx,
+				map[string]string{"REMUX_TEST_A": "space-a"})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).To(Equal("space-a host-b"))
+		})
+
+		It("leaves EvaluateTemplate on the host env only", func() {
+			GinkgoT().Setenv("REMUX_TEST_A", "host-a")
+			result, err := config.EvaluateTemplate("{{ env.REMUX_TEST_A }}", ctx)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).To(Equal("host-a"))
+		})
+	})
 })

@@ -222,7 +222,7 @@ func (h *herdrBackend) AddTabs(space Space, tabs []config.Tab, env map[string]st
 			}
 		}
 
-		tab = tab.InlinePrompt()
+		tab = tab.InlineArgs().InlinePrompt()
 		if tab.Cmd != "" {
 			if err := h.call(nil, "pane", "run", pane, tab.Cmd); err != nil {
 				return err
@@ -265,6 +265,9 @@ const agentReadyTimeout = 2 * time.Minute
 func (h *herdrBackend) startAgent(pane string, tab config.Tab, kind string, args []string) error {
 	name := tab.AgentName
 	start := []string{"agent", "start", name, "--kind", kind, "--pane", pane}
+	// herdr quotes agent args for the pane's shell itself, so extra args
+	// (which may contain spaces) are passed through unquoted
+	args = append(args[:len(args):len(args)], tab.AgentArgs...)
 	if len(args) > 0 {
 		start = append(append(start, "--"), args...)
 	}
