@@ -1,6 +1,6 @@
 ---
 name: remux
-description: Use when working with remux, or delegating work to a background coding agent in its own git worktree. remux creates a worktree, port, env, hooks and an agent per workspace, in herdr or tmux. Covers `remux new|open|list|close|drop|next|prev`, delegating ("delegate this", "hand this off", "spin up a worktree/agent") and following up on delegated agents, `.remux.yaml` / `.remux.local.yaml` config (backend, env, env_file, hooks, tabs, agent), template variables like `{{ space.Port }}`, remux-shell, and the `remux daemon` WORKFLOW.md orchestrator. Use whenever a lead session at a repo root has Linear ticket work to do.
+description: Use when working with remux, or delegating work to a background coding agent in its own git worktree. remux creates a worktree, port, env, hooks and an agent per workspace, in herdr or tmux. Covers `remux new|open|list|close|drop|next|prev`, delegating ("delegate this", "hand this off", "spin up a worktree/agent") and following up on delegated agents, `.remux.yaml` / `.remux.local.yaml` config (backend, env, env_file, hooks, tabs, agent, instructions), template variables like `{{ space.Port }}`, remux-shell, and the `remux daemon` WORKFLOW.md orchestrator. Use whenever a lead session at a repo root has Linear ticket work to do.
 ---
 
 # remux
@@ -132,9 +132,10 @@ containing the cwd.
 
 `.remux.yaml` in the repo root, optionally overlaid by `.remux.local.yaml`
 (gitignore that one; it's for machine-local overrides). Merge rules: `env` maps
-merge key-by-key, `agent`, `backend` and `env_file` override if non-empty, `tabs`
-are replaced wholesale if the local file defines any, and each hook list is
-replaced independently.
+merge key-by-key, `agent`, `backend`, `env_file` and `instructions` override if
+non-empty, `default_instructions` overrides when set (true or false), `tabs` are
+replaced wholesale if the local file defines any, and each hook list is replaced
+independently.
 
 ```yaml
 backend: herdr            # or tmux (default); REMUX_BACKEND sets a user default
@@ -143,7 +144,13 @@ env_file: .env.local      # optional: also write the env here on create
 
 env:
   PORT: "{{ space.Port }}"
+  API_PORT: "{{ space.Port + 1 }}"
   DATABASE_URL: "postgres://localhost/myapp_{{ space.ID }}"
+
+# Appended to the agent's system prompt, after remux's built-in base
+instructions: |
+  The app runs on port {{ env.PORT }}, the API on {{ env.API_PORT }}.
+default_instructions: true  # false drops the built-in base
 
 hooks:
   on_create: [npm install]          # once, before tabs start; failures warn only
@@ -174,7 +181,7 @@ sending the prompt), `timeout` (seconds, default 60).
 
 ### Template variables
 
-Values in `env`, `hooks`, and tab fields support `{{ expr }}` interpolation,
+Values in `env`, `hooks`, tab fields and `instructions` support `{{ expr }}` interpolation,
 evaluated with [expr-lang](https://expr-lang.org) (not Go templates; the daemon's
 `WORKFLOW.md` body is the one place that uses Go templates):
 
@@ -186,7 +193,7 @@ evaluated with [expr-lang](https://expr-lang.org) (not Go templates; the daemon'
 | `space.ID` | Name with `-` and `/` replaced by `_`, safe for db/identifier names |
 | `space.RepoRoot` | Repo root the workspace belongs to |
 | `prompt` | The `-p` prompt |
-| `env.*` | Host environment variables |
+| `env.*` | Host environment variables; in `instructions`, overlaid with the workspace's resolved `env` |
 
 ## Agent tab
 
@@ -196,6 +203,19 @@ permission mode). With tmux the `-p` prompt is appended as a positional argument
 with herdr the agent is started with `herdr agent start` and the prompt is
 submitted with `herdr agent prompt`. Any other value is used verbatim as a
 command line, so `--agent "claude --model opus"` works.
+
+### Workspace instructions
+
+The agent's system prompt gets a short built-in base (isolated worktree,
+workspace name and path, main checkout not to be modified, use the workspace's
+ports) followed by the project's `instructions`. Define ports in `env` and
+reference them as `{{ env.X }}` in `instructions`; the base deliberately leaves
+port layouts to the project. claude gets `--append-system-prompt-file` pointing at
+`remux-instructions.md` in the worktree's git dir (rewritten on every open). codex
+gets `-c developer_instructions=...`. Other agent commands get nothing, with a
+warning only if `instructions` is set. This applies only to the agent remux
+starts: if you restart the agent by hand in the pane, it loses the
+instructions unless you pass the flag yourself.
 
 ## Daemon
 

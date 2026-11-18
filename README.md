@@ -164,7 +164,7 @@ Configuration values support template expressions using `{{ }}` syntax:
 | `space.Port` | Allocated port number |
 | `space.ID` | Sanitized name (hyphens replaced with underscores) |
 | `space.RepoRoot` | Associated repository root |
-| `env.*` | Environment variables |
+| `env.*` | Environment variables (in `instructions`, also the workspace's resolved `env`) |
 
 ### Tabs
 
@@ -194,6 +194,48 @@ Known agents (`claude`, `codex`) are started with sensible flags — `claude` ru
 in auto permission mode — and receive the `-p` prompt as a positional argument.
 Any other value is used as the command line verbatim, so
 `--agent "claude --model opus"` works too. Use `none` to skip the agent tab.
+
+### Agent instructions
+
+remux appends a short set of workspace instructions to the agent's system prompt,
+like a `CLAUDE.md` that only applies inside remux workspaces. A built-in base
+tells the agent it is in an isolated worktree, names the workspace and the main
+checkout (which it should leave alone), and says to use the workspace's ports
+rather than hardcoded defaults. Add project-specific text with `instructions`:
+
+```yaml
+env:
+  APP_PORT: "{{ space.Port }}"
+  API_PORT: "{{ space.Port + 1 }}"
+
+instructions: |
+  The app runs on port {{ env.APP_PORT }} and the API on {{ env.API_PORT }}.
+  Run the test suite with `make test` before committing.
+```
+
+The final text is the base, a blank line, then your `instructions`. Both are
+templated. In `instructions`, `{{ env.X }}` sees the workspace's resolved `env`
+on top of the host environment, so port arithmetic stays in one place (`env`)
+and the instructions just reference it. Only the base port is known to remux, so
+port layouts belong in your `instructions`, not the base.
+
+Set `default_instructions: false` to drop the built-in base and keep only your
+own text. In `.remux.local.yaml`, a non-empty `instructions` replaces the repo's
+and `default_instructions` overrides in either direction.
+
+How the text reaches the agent:
+
+- **claude**: written to `remux-instructions.md` in the worktree's git dir (out
+  of `git status`), rewritten on every open, and passed with
+  `--append-system-prompt-file`. It applies without a `-p` prompt and survives
+  compaction.
+- **codex**: passed as `-c developer_instructions=...`. This replaces any
+  `developer_instructions` from your codex config for that session.
+- **Other agent commands** get nothing. remux warns if you set `instructions`
+  and the agent can't receive them.
+
+The instructions only apply to the agent remux starts. If you restart the agent
+by hand in the pane, start it with the same flag or it won't see them.
 
 ### Env file
 
